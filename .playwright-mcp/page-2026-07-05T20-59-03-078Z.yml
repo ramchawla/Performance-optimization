@@ -1,0 +1,9 @@
+- generic [active] [ref=f4e1]:
+  - main [ref=f4e2]:
+    - generic [ref=f4e3]:
+      - heading "Performance Hub" [level=1] [ref=f4e4]
+      - generic [ref=f4e5]:
+        - textbox "you@example.com" [ref=f4e6]
+        - button "Send magic link" [ref=f4e7]
+  - button "Open Next.js Dev Tools" [ref=f4e13] [cursor=pointer]:
+    - img [ref=f4e14]

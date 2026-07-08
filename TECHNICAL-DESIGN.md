@@ -127,3 +127,4 @@
 3. Plain (non-materialized) `daily_rollup` view; revisit only if dashboard >200ms.
 4. USDA search quality is mediocre for branded items; mitigated by local-first search + OFF barcodes.
 5. No meal photos / AI food recognition in v1 — parking lot.
+is 

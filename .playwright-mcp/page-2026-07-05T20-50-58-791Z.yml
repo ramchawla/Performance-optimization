@@ -1,0 +1,6 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - heading "Performance Hub" [level=1] [ref=e4]
+    - generic [ref=e5]:
+      - textbox "you@example.com" [ref=e6]
+      - button "Send magic link" [ref=e7]

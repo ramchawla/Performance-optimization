@@ -1,0 +1,11 @@
+- generic [active] [ref=f3e1]:
+  - main [ref=f3e2]:
+    - generic [ref=f3e3]:
+      - heading "Performance Hub" [level=1] [ref=f3e4]
+      - generic [ref=f3e5]:
+        - textbox "you@example.com" [ref=f3e6]: chawlaram1@gmail.com
+        - button "Send magic link" [ref=f3e7]
+        - paragraph [ref=f3e18]: email rate limit exceeded
+  - button "Open Next.js Dev Tools" [ref=f3e13] [cursor=pointer]:
+    - img [ref=f3e14]
+  - alert [ref=f3e17]
