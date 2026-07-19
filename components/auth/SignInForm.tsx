@@ -20,15 +20,26 @@ export function SignInForm() {
     setErrorMsg(null);
 
     const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (signInError) {
-      const { error: signUpError } = await supabase.auth.signUp({ email, password });
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
       if (signUpError) {
         setStatus("error");
         setErrorMsg(signUpError.message);
         return;
       }
+      if (!signUpData.session) {
+        setStatus("error");
+        setErrorMsg(
+          "Account created but not signed in — Supabase has \"Confirm email\" on. Turn it off in Authentication > Providers > Email, then try again."
+        );
+        return;
+      }
+    } else if (!signInData.session) {
+      setStatus("error");
+      setErrorMsg("Signed in but no session returned — check Supabase auth settings.");
+      return;
     }
 
     router.push("/dashboard");
