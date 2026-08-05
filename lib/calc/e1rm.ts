@@ -95,3 +95,26 @@ export function readyToProgress(
     return hitReps && hitRpe;
   });
 }
+
+/**
+ * Slope of e1RM over the trailing N days, in kg/week, mirroring
+ * weightTrend.ts's emaSlopeKgPerWeek. Positive = getting stronger.
+ * Returns null if fewer than 2 points fall in the window.
+ */
+export function e1rmSlopePerWeek(series: ProgressPoint[], trailingDays = 28): number | null {
+  if (series.length < 2) return null;
+  const last = series[series.length - 1];
+  const cutoff = new Date(last.performedAt + "T00:00:00Z").getTime() - trailingDays * 86400000;
+  const window = series.filter((p) => new Date(p.performedAt + "T00:00:00Z").getTime() >= cutoff);
+  if (window.length < 2) return null;
+
+  const first = window[0];
+  const daysApart =
+    (new Date(last.performedAt + "T00:00:00Z").getTime() -
+      new Date(first.performedAt + "T00:00:00Z").getTime()) /
+    86400000;
+  if (daysApart <= 0) return null;
+
+  const kgPerDay = (last.e1rm - first.e1rm) / daysApart;
+  return kgPerDay * 7;
+}

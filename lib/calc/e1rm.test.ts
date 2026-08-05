@@ -5,6 +5,7 @@ import {
   buildProgressSeries,
   currentPR,
   readyToProgress,
+  e1rmSlopePerWeek,
   type SessionForProgress,
 } from "./e1rm";
 
@@ -135,5 +136,30 @@ describe("readyToProgress", () => {
       { reps: 10, rpe: 7, isWarmup: false },
     ];
     expect(readyToProgress(sets, 10, 8)).toBe(true);
+  });
+});
+
+describe("e1rmSlopePerWeek", () => {
+  it("returns null with fewer than 2 points", () => {
+    expect(e1rmSlopePerWeek([{ sessionId: "a", performedAt: "2026-01-01", e1rm: 100 }])).toBeNull();
+  });
+
+  it("computes positive slope in kg/week over the trailing window", () => {
+    const series = [
+      { sessionId: "a", performedAt: "2026-01-01", e1rm: 100 },
+      { sessionId: "b", performedAt: "2026-01-08", e1rm: 107 },
+    ];
+    const slope = e1rmSlopePerWeek(series, 28);
+    expect(slope).toBeCloseTo(7, 5);
+  });
+
+  it("only considers the trailing N days of points", () => {
+    const series = [
+      { sessionId: "a", performedAt: "2026-01-01", e1rm: 50 },
+      { sessionId: "b", performedAt: "2026-01-08", e1rm: 100 },
+      { sessionId: "c", performedAt: "2026-01-15", e1rm: 107 },
+    ];
+    const slope = e1rmSlopePerWeek(series, 8);
+    expect(slope).toBeCloseTo(7, 5);
   });
 });
