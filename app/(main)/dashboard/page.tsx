@@ -42,7 +42,7 @@ export default function Page() {
             label="Weight"
             value={data.weightSlopeKgPerWeek !== null ? `${data.weightSlopeKgPerWeek.toFixed(2)} kg/wk` : "—"}
             trend={trendFor(data.weightSlopeKgPerWeek)}
-            favorable={data.weightSlopeKgPerWeek !== null && data.weightSlopeKgPerWeek < 0}
+            favorable={false}
             sparkline={[]}
           />
           <RecompTile

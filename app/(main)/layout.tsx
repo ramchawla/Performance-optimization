@@ -21,7 +21,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       {children}
       <nav className="fixed bottom-4 left-4 right-4 flex justify-around rounded-2xl border border-surface-raised bg-surface/95 py-2 backdrop-blur">
         {NAV.map((item) => {
-          const active = pathname?.startsWith(item.href.split("/")[1] ? `/${item.href.split("/")[1]}` : item.href);
+          const active = pathname?.startsWith(`/${item.href.split("/")[1]}`);
           return (
             <Link
               key={item.href}
