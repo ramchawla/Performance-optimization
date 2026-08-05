@@ -23,7 +23,11 @@ export interface DashboardData {
   week: Array<{ date: string; trained: boolean }>;
 }
 
-const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+// UTC — fine only for relative-offset cutoffs like windowStart, never for "today".
+const isoDateUtc = (d: Date) => d.toISOString().slice(0, 10);
+// Local-timezone date, matching app/(main)/food/log/page.tsx's convention. Must be
+// used for todayIso/week lookups since daily_rollup.day is a client-set log_date.
+const isoDateLocal = (d: Date) => d.toLocaleDateString("en-CA");
 
 // Row shape returned by the nested workout_sessions -> session_exercises ->
 // session_sets select below. The generated Supabase types don't model
@@ -53,8 +57,8 @@ export function useDashboard() {
       if (userError || !userData.user) throw new Error("Not signed in");
       const userId = userData.user.id;
 
-      const todayIso = isoDate(new Date());
-      const windowStart = isoDate(new Date(Date.now() - 35 * 86400000));
+      const todayIso = isoDateLocal(new Date());
+      const windowStart = isoDateUtc(new Date(Date.now() - 35 * 86400000));
 
       const [rollupRes, profileRes, bodyRes, sessionsRes] = await Promise.all([
         supabase
@@ -138,7 +142,7 @@ export function useDashboard() {
 
       const week: DashboardData["week"] = [];
       for (let i = 6; i >= 0; i--) {
-        const date = isoDate(new Date(Date.now() - i * 86400000));
+        const date = isoDateLocal(new Date(Date.now() - i * 86400000));
         const row = rollupRows.find((r) => r.day === date);
         week.push({ date, trained: row?.trained ?? false });
       }
