@@ -26,12 +26,12 @@ export function RestTimer() {
   const ss = totalSeconds % 60;
 
   return (
-    <div className="fixed bottom-16 left-0 right-0 z-40 flex items-center justify-between bg-neutral-900 px-4 py-3 text-white">
-      <span className="text-lg font-semibold tabular-nums">
+    <div className="fixed bottom-20 left-4 right-4 z-40 flex items-center justify-between rounded-2xl bg-surface-raised px-4 py-3 shadow-[0_0_16px_-4px_var(--accent)]">
+      <span className="font-display text-lg font-bold tabular-nums text-accent">
         {mm}:{String(ss).padStart(2, "0")}
       </span>
-      <span className="text-xs text-neutral-300">Rest</span>
-      <button onClick={clear} className="text-xs underline">
+      <span className="text-xs text-muted">Rest</span>
+      <button onClick={clear} className="text-xs text-fg underline">
         Skip
       </button>
     </div>

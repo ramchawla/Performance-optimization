@@ -27,8 +27,8 @@ export default function ActiveSessionPage() {
   if (!session) {
     return (
       <main className="p-6 text-center">
-        <p className="text-sm text-neutral-500">No active session.</p>
-        <Link href="/train/templates" className="mt-2 inline-block text-sm text-blue-600">
+        <p className="text-sm text-muted">No active session.</p>
+        <Link href="/train/templates" className="mt-2 inline-block text-sm text-accent">
           Go to templates
         </Link>
       </main>
@@ -76,19 +76,24 @@ export default function ActiveSessionPage() {
   return (
     <main className="p-4 pb-32">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{session.templateNameSnapshot ?? "Workout"}</h1>
+        <h1 className="font-display text-xl font-bold text-fg">{session.templateNameSnapshot ?? "Workout"}</h1>
         <button
           onClick={handleFinish}
           disabled={completeSession.isPending}
-          className="rounded bg-neutral-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-bg disabled:opacity-50"
         >
           Finish
         </button>
       </div>
 
-      <div className="mt-2 flex items-center gap-4 text-sm">
+      <div className="mt-2 flex items-center gap-4 text-sm text-fg">
         <label className="flex items-center gap-1">
-          <input type="checkbox" checked={session.isDeload} onChange={(e) => setDeload(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={session.isDeload}
+            onChange={(e) => setDeload(e.target.checked)}
+            className="accent-[var(--accent)]"
+          />
           Deload
         </label>
         <label className="flex items-center gap-1">
@@ -97,7 +102,7 @@ export default function ActiveSessionPage() {
             type="number"
             defaultValue={session.bodyweightKg ?? ""}
             onBlur={(e) => setBodyweight(e.target.value === "" ? null : Number(e.target.value))}
-            className="w-16 rounded border border-neutral-300 px-2 py-1"
+            className="w-16 rounded-lg border border-surface-raised bg-surface-raised px-2 py-1 text-fg focus:border-accent focus:outline-none"
           />
         </label>
       </div>

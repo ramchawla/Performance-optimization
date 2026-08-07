@@ -34,23 +34,23 @@ export function SetRow({
   const [rpe, setRpe] = useState<number | undefined>(actualRpe ?? prefillRpe ?? undefined);
 
   return (
-    <div className={`rounded p-2 ${isLogged ? "bg-green-50" : "bg-neutral-50"}`}>
-      {lastLabel && !isLogged && <div className="mb-1 text-[11px] text-neutral-400">Last: {lastLabel}</div>}
+    <div className={`rounded-xl p-2 ${isLogged ? "bg-accent/10 ring-1 ring-accent/40" : "bg-surface-raised"}`}>
+      {lastLabel && !isLogged && <div className="mb-1 text-[11px] text-muted">Last: {lastLabel}</div>}
       <div className="flex items-center gap-2">
-        <span className="w-5 text-xs text-neutral-400">{isWarmup ? "W" : setNumber}</span>
+        <span className="w-5 text-xs text-muted">{isWarmup ? "W" : setNumber}</span>
         <input
           type="number"
           value={reps}
           onChange={(e) => setReps(Number(e.target.value))}
           aria-label="Reps"
-          className="w-14 rounded border border-neutral-300 px-2 py-1.5 text-sm"
+          className="w-14 rounded-lg border border-surface-raised bg-surface px-2 py-1.5 text-sm text-fg focus:border-accent focus:outline-none"
         />
         <input
           type="number"
           value={weight}
           onChange={(e) => setWeight(Number(e.target.value))}
           aria-label={`Weight (${WEIGHT_UNIT})`}
-          className="w-16 rounded border border-neutral-300 px-2 py-1.5 text-sm"
+          className="w-16 rounded-lg border border-surface-raised bg-surface px-2 py-1.5 text-sm text-fg focus:border-accent focus:outline-none"
         />
         <input
           type="number"
@@ -59,12 +59,12 @@ export function SetRow({
           placeholder="RPE"
           onChange={(e) => setRpe(e.target.value === "" ? undefined : Number(e.target.value))}
           aria-label="RPE"
-          className="w-14 rounded border border-neutral-300 px-2 py-1.5 text-sm"
+          className="w-14 rounded-lg border border-surface-raised bg-surface px-2 py-1.5 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none"
         />
         <button
           type="button"
           onClick={() => onLog({ reps, weightKg: inputToKg(weight, WEIGHT_UNIT), rpe: rpe ?? null })}
-          className={`ml-auto rounded px-3 py-1.5 text-xs font-medium text-white ${isLogged ? "bg-neutral-500" : "bg-neutral-900"}`}
+          className={`ml-auto rounded-lg px-3 py-1.5 text-xs font-medium ${isLogged ? "bg-surface text-fg" : "bg-accent text-bg"}`}
         >
           {isLogged ? "Update" : "Log"}
         </button>

@@ -29,11 +29,11 @@ export default function TemplatesPage() {
   }
 
   return (
-    <main className="p-4 pb-24">
-      <h1 className="text-xl font-semibold">Templates</h1>
+    <main className="space-y-4 p-4">
+      <h1 className="font-display text-xl font-bold text-fg">Templates</h1>
 
       <form
-        className="mt-4 flex gap-2"
+        className="flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           if (!name.trim()) return;
@@ -44,27 +44,27 @@ export default function TemplatesPage() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="New template name"
-          className="flex-1 rounded border border-neutral-300 px-3 py-2 text-sm"
+          className="flex-1 rounded-xl border border-surface-raised bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none"
         />
         <button
           type="submit"
           disabled={createTemplate.isPending}
-          className="rounded bg-neutral-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+          className="rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-bg disabled:opacity-50"
         >
           Add
         </button>
       </form>
 
-      {isLoading && <p className="mt-4 text-sm text-neutral-500">Loading…</p>}
+      {isLoading && <p className="text-sm text-muted">Loading…</p>}
 
-      <ul className="mt-4 space-y-2">
+      <ul className="space-y-2">
         {templates?.map((t, i) => (
-          <li key={t.id} className="flex items-center gap-2 rounded border border-neutral-200 p-3">
+          <li key={t.id} className="flex items-center gap-2 rounded-2xl bg-surface p-3">
             <div className="flex flex-col">
               <button
                 onClick={() => move(i, -1)}
                 disabled={i === 0}
-                className="text-xs text-neutral-500 disabled:opacity-30"
+                className="text-xs text-muted disabled:opacity-30"
                 aria-label="Move up"
               >
                 ▲
@@ -72,20 +72,20 @@ export default function TemplatesPage() {
               <button
                 onClick={() => move(i, 1)}
                 disabled={i === templates.length - 1}
-                className="text-xs text-neutral-500 disabled:opacity-30"
+                className="text-xs text-muted disabled:opacity-30"
                 aria-label="Move down"
               >
                 ▼
               </button>
             </div>
-            <Link href={`/train/templates/${t.id}`} className="flex-1 text-sm font-medium">
+            <Link href={`/train/templates/${t.id}`} className="flex-1 text-sm font-medium text-fg">
               {t.name}
             </Link>
             <button
               onClick={() => {
                 if (confirm(`Archive "${t.name}"?`)) archiveTemplate.mutate(t.id);
               }}
-              className="text-xs text-red-600"
+              className="text-xs text-red-400"
             >
               Archive
             </button>
@@ -94,7 +94,7 @@ export default function TemplatesPage() {
       </ul>
 
       {templates?.length === 0 && !isLoading && (
-        <p className="mt-4 text-sm text-neutral-500">No templates yet — add one above.</p>
+        <p className="text-sm text-muted">No templates yet — add one above.</p>
       )}
     </main>
   );

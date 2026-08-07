@@ -32,7 +32,7 @@ export default function TemplateDetailPage() {
   if (isLoading || !data) {
     return (
       <main className="p-4">
-        <p className="text-sm text-neutral-500">Loading…</p>
+        <p className="text-sm text-muted">Loading…</p>
       </main>
     );
   }
@@ -77,24 +77,29 @@ export default function TemplateDetailPage() {
   }
 
   return (
-    <main className="p-4 pb-24">
-      <h1 className="text-xl font-semibold">{template.name}</h1>
+    <main className="space-y-4 p-4">
+      <h1 className="font-display text-xl font-bold text-fg">{template.name}</h1>
 
-      <div className="mt-4 flex items-center gap-3 rounded border border-neutral-200 p-3">
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={isDeload} onChange={(e) => setIsDeload(e.target.checked)} />
+      <div className="flex items-center gap-3 rounded-2xl bg-surface p-3">
+        <label className="flex items-center gap-2 text-sm text-fg">
+          <input
+            type="checkbox"
+            checked={isDeload}
+            onChange={(e) => setIsDeload(e.target.checked)}
+            className="accent-[var(--accent)]"
+          />
           Deload session
         </label>
         <button
           onClick={handleStartSession}
           disabled={startSession.isPending || exercises.length === 0}
-          className="ml-auto rounded bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="ml-auto rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-bg disabled:opacity-50"
         >
           Start Session
         </button>
       </div>
 
-      <ul className="mt-4 space-y-3">
+      <ul className="space-y-3">
         {exercises.map((ex, i) => (
           <ExerciseRow
             key={ex.id}
@@ -111,10 +116,10 @@ export default function TemplateDetailPage() {
       </ul>
 
       {exercises.length === 0 && (
-        <p className="mt-4 text-sm text-neutral-500">No exercises yet — add one below.</p>
+        <p className="text-sm text-muted">No exercises yet — add one below.</p>
       )}
 
-      <div className="mt-4">
+      <div>
         {showPicker ? (
           <ExercisePicker
             onSelect={(exercise) => {
@@ -126,7 +131,7 @@ export default function TemplateDetailPage() {
         ) : (
           <button
             onClick={() => setShowPicker(true)}
-            className="w-full rounded border border-dashed border-neutral-300 py-3 text-sm text-neutral-600"
+            className="w-full rounded-2xl border border-dashed border-surface-raised py-3 text-sm text-muted"
           >
             + Add exercise
           </button>
@@ -157,25 +162,28 @@ function ExerciseRow({
 }) {
   const displayWeight = displayWeightKg(exercise.target_weight_kg, WEIGHT_UNIT);
 
+  const fieldClass =
+    "rounded-lg border border-surface-raised bg-surface-raised px-2 py-1 text-fg focus:border-accent focus:outline-none";
+
   return (
-    <li className="rounded border border-neutral-200 p-3">
+    <li className="rounded-2xl bg-surface p-3">
       <div className="flex items-center gap-2">
         <div className="flex flex-col">
-          <button onClick={() => onMove(-1)} disabled={index === 0} className="text-xs text-neutral-500 disabled:opacity-30" aria-label="Move up">▲</button>
-          <button onClick={() => onMove(1)} disabled={isLast} className="text-xs text-neutral-500 disabled:opacity-30" aria-label="Move down">▼</button>
+          <button onClick={() => onMove(-1)} disabled={index === 0} className="text-xs text-muted disabled:opacity-30" aria-label="Move up">▲</button>
+          <button onClick={() => onMove(1)} disabled={isLast} className="text-xs text-muted disabled:opacity-30" aria-label="Move down">▼</button>
         </div>
-        <span className="flex-1 text-sm font-medium">{exercise.exercises?.name ?? "Unknown exercise"}</span>
-        <button onClick={onRemove} className="text-xs text-red-600">Remove</button>
+        <span className="flex-1 text-sm font-medium text-fg">{exercise.exercises?.name ?? "Unknown exercise"}</span>
+        <button onClick={onRemove} className="text-xs text-red-400">Remove</button>
       </div>
 
-      <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+      <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted">
         <label className="flex flex-col gap-0.5">
           Sets
           <input
             type="number"
             defaultValue={exercise.target_sets}
             onBlur={(e) => onPatch({ target_sets: Number(e.target.value) })}
-            className="rounded border border-neutral-300 px-2 py-1"
+            className={fieldClass}
           />
         </label>
         <label className="flex flex-col gap-0.5">
@@ -184,7 +192,7 @@ function ExerciseRow({
             type="number"
             defaultValue={exercise.target_reps_min ?? ""}
             onBlur={(e) => onPatch({ target_reps_min: e.target.value === "" ? null : Number(e.target.value) })}
-            className="rounded border border-neutral-300 px-2 py-1"
+            className={fieldClass}
           />
         </label>
         <label className="flex flex-col gap-0.5">
@@ -193,7 +201,7 @@ function ExerciseRow({
             type="number"
             defaultValue={exercise.target_reps_max ?? ""}
             onBlur={(e) => onPatch({ target_reps_max: e.target.value === "" ? null : Number(e.target.value) })}
-            className="rounded border border-neutral-300 px-2 py-1"
+            className={fieldClass}
           />
         </label>
         <label className="flex flex-col gap-0.5">
@@ -204,7 +212,7 @@ function ExerciseRow({
             onBlur={(e) =>
               onPatch({ target_weight_kg: e.target.value === "" ? null : inputToKg(Number(e.target.value), WEIGHT_UNIT) })
             }
-            className="rounded border border-neutral-300 px-2 py-1"
+            className={fieldClass}
           />
         </label>
         <label className="flex flex-col gap-0.5">
@@ -214,7 +222,7 @@ function ExerciseRow({
             step="0.5"
             defaultValue={exercise.target_rpe ?? ""}
             onBlur={(e) => onPatch({ target_rpe: e.target.value === "" ? null : Number(e.target.value) })}
-            className="rounded border border-neutral-300 px-2 py-1"
+            className={fieldClass}
           />
         </label>
         <label className="flex flex-col gap-0.5">
@@ -223,13 +231,13 @@ function ExerciseRow({
             type="number"
             defaultValue={exercise.rest_seconds ?? ""}
             onBlur={(e) => onPatch({ rest_seconds: e.target.value === "" ? null : Number(e.target.value) })}
-            className="rounded border border-neutral-300 px-2 py-1"
+            className={fieldClass}
           />
         </label>
       </div>
 
       {!isLast && (
-        <button onClick={onToggleSuperset} className="mt-2 text-xs text-blue-600">
+        <button onClick={onToggleSuperset} className="mt-2 text-xs text-accent">
           {groupedWithNext ? "Ungroup from next" : "Group with next (superset)"}
         </button>
       )}

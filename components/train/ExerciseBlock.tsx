@@ -24,9 +24,9 @@ export function ExerciseBlock({
   const { data: last } = useLastPerformance(exercise.exerciseId);
 
   return (
-    <section className="rounded border border-neutral-200 p-3">
-      <h2 className="text-sm font-semibold">{exerciseName}</h2>
-      <p className="text-xs text-neutral-500">
+    <section className="rounded-2xl bg-surface p-3">
+      <h2 className="text-sm font-semibold text-fg">{exerciseName}</h2>
+      <p className="text-xs text-muted">
         Target: {exercise.targetSets ?? "—"} x {exercise.targetRepsMin ?? "?"}–{exercise.targetRepsMax ?? "?"}
         {exercise.targetWeightKg !== null ? ` @ ${formatWeightKg(exercise.targetWeightKg, "lb")}` : ""}
         {exercise.targetRpe !== null ? ` RPE ${exercise.targetRpe}` : ""}
@@ -57,7 +57,7 @@ export function ExerciseBlock({
         })}
       </div>
 
-      <button type="button" onClick={onAddSet} className="mt-2 text-xs text-blue-600">
+      <button type="button" onClick={onAddSet} className="mt-2 text-xs text-accent">
         + Add set
       </button>
     </section>
