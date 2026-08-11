@@ -45,6 +45,7 @@ export interface ActiveSession {
 interface ActiveSessionState {
   session: ActiveSession | null;
   restTimerEndsAt: number | null; // epoch ms, null when no timer running
+  restTimerTotalSeconds: number | null; // duration the running timer started at, for progress-ring math
 
   startSession: (input: {
     clientId: string;
@@ -73,6 +74,7 @@ interface ActiveSessionState {
 export const useActiveSessionStore = create<ActiveSessionState>((set) => ({
   session: null,
   restTimerEndsAt: null,
+  restTimerTotalSeconds: null,
 
   startSession: ({ clientId, templateId, templateNameSnapshot, isDeload, exercises }) =>
     set({
@@ -86,9 +88,10 @@ export const useActiveSessionStore = create<ActiveSessionState>((set) => ({
         exercises,
       },
       restTimerEndsAt: null,
+      restTimerTotalSeconds: null,
     }),
 
-  endSession: () => set({ session: null, restTimerEndsAt: null }),
+  endSession: () => set({ session: null, restTimerEndsAt: null, restTimerTotalSeconds: null }),
 
   completeSet: (exerciseClientId, setClientId, result) =>
     set((state) => {
@@ -150,6 +153,7 @@ export const useActiveSessionStore = create<ActiveSessionState>((set) => ({
   setBodyweight: (bodyweightKg) =>
     set((state) => (state.session ? { session: { ...state.session, bodyweightKg } } : state)),
 
-  startRestTimer: (durationSeconds) => set({ restTimerEndsAt: Date.now() + durationSeconds * 1000 }),
-  clearRestTimer: () => set({ restTimerEndsAt: null }),
+  startRestTimer: (durationSeconds) =>
+    set({ restTimerEndsAt: Date.now() + durationSeconds * 1000, restTimerTotalSeconds: durationSeconds }),
+  clearRestTimer: () => set({ restTimerEndsAt: null, restTimerTotalSeconds: null }),
 }));

@@ -3,7 +3,7 @@
 import type { ActiveSessionExercise } from "@/stores/activeSession";
 import { useLastPerformance } from "@/lib/queries/sessions";
 import { formatWeightKg } from "@/lib/units";
-import { SetRow } from "./SetRow";
+import { SetRow, type SetStatus } from "./SetRow";
 
 export function ExerciseBlock({
   exercise,
@@ -23,21 +23,31 @@ export function ExerciseBlock({
 }) {
   const { data: last } = useLastPerformance(exercise.exerciseId);
 
+  // Nothing logged yet on this exercise — dim it so attention stays on
+  // whichever exercise is actually in progress, while keeping every set
+  // fully interactive (out-of-order logging still works).
+  const hasAnyLogged = exercise.sets.some((s) => s.actualReps !== null);
+  const firstPendingIndex = exercise.sets.findIndex((s) => s.actualReps === null);
+
   return (
-    <section className="rounded-2xl bg-surface p-3">
-      <h2 className="text-sm font-semibold text-fg">{exerciseName}</h2>
+    <section
+      className={`rounded-2xl bg-surface p-3 transition-opacity duration-300 ${hasAnyLogged ? "" : "opacity-60"}`}
+    >
+      <h2 className="font-display text-sm font-bold text-fg">{exerciseName}</h2>
       <p className="text-xs text-muted">
-        Target: {exercise.targetSets ?? "—"} x {exercise.targetRepsMin ?? "?"}–{exercise.targetRepsMax ?? "?"}
+        Target: {exercise.targetSets ?? "—"} × {exercise.targetRepsMin ?? "?"}–{exercise.targetRepsMax ?? "?"}
         {exercise.targetWeightKg !== null ? ` @ ${formatWeightKg(exercise.targetWeightKg, "lb")}` : ""}
         {exercise.targetRpe !== null ? ` RPE ${exercise.targetRpe}` : ""}
       </p>
 
-      <div className="mt-2 space-y-2">
-        {exercise.sets.map((set) => {
+      <div className="mt-3 space-y-2">
+        {exercise.sets.map((set, i) => {
+          const status: SetStatus = set.actualReps !== null ? "done" : i === firstPendingIndex ? "active" : "upcoming";
           const lastSet = last?.sets.find((s) => s.setNumber === set.setNumber);
           return (
             <SetRow
               key={set.clientId}
+              status={status}
               setNumber={set.setNumber}
               isWarmup={set.isWarmup}
               actualReps={set.actualReps}
@@ -48,7 +58,7 @@ export function ExerciseBlock({
               prefillRpe={lastSet?.rpe ?? null}
               lastLabel={
                 lastSet
-                  ? `${lastSet.reps} x ${formatWeightKg(lastSet.weightKg, "lb")}${lastSet.rpe ? ` @ RPE ${lastSet.rpe}` : ""}`
+                  ? `${lastSet.reps} × ${formatWeightKg(lastSet.weightKg, "lb")}${lastSet.rpe ? ` @ RPE ${lastSet.rpe}` : ""}`
                   : null
               }
               onLog={(result) => onLogSet(set.clientId, set.setNumber, set.isWarmup, result)}
@@ -57,7 +67,11 @@ export function ExerciseBlock({
         })}
       </div>
 
-      <button type="button" onClick={onAddSet} className="mt-2 text-xs text-accent">
+      <button
+        type="button"
+        onClick={onAddSet}
+        className="mt-2.5 w-full rounded-xl border border-dashed border-surface-raised py-2.5 text-xs font-semibold text-muted transition-colors duration-150 hover:border-accent hover:text-accent active:scale-[0.98]"
+      >
         + Add set
       </button>
     </section>

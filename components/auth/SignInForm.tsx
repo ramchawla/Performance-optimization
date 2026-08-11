@@ -53,7 +53,7 @@ export function SignInForm() {
         placeholder="you@example.com"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="w-full rounded-md border border-neutral-300 px-3 py-2 text-base"
+        className="w-full rounded-xl border border-surface-raised bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none"
       />
       <input
         type="password"
@@ -62,17 +62,17 @@ export function SignInForm() {
         placeholder="password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        className="w-full rounded-md border border-neutral-300 px-3 py-2 text-base"
+        className="w-full rounded-xl border border-surface-raised bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none"
       />
       <button
         type="submit"
         disabled={status === "loading"}
-        className="w-full rounded-md bg-neutral-900 px-3 py-2 text-white disabled:opacity-50"
+        className="w-full rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-bg transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
       >
         {status === "loading" ? "Signing in..." : "Sign in / create account"}
       </button>
       {status === "error" && (
-        <p className="text-sm text-red-600">{errorMsg}</p>
+        <p className="text-sm text-red-400">{errorMsg}</p>
       )}
     </form>
   );

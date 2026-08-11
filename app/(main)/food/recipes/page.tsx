@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useCreateRecipe, useLogRecipe, useRecipes, type RecipeWithItems } from "@/lib/queries/recipes";
+import { useCreateRecipe, useLogRecipe, type RecipeWithItems } from "@/lib/queries/recipes";
 import { FoodPicker } from "@/components/food/FoodPicker";
+import { FoodSubnav } from "@/components/food/FoodSubnav";
+import { MOCK_FOODS, MOCK_RECIPES } from "@/lib/mock/foodMock";
 import type { Food } from "@/lib/queries/foods";
 import type { Database } from "@/lib/database.types";
 
@@ -12,6 +14,9 @@ const MEALS: MealType[] = ["breakfast", "lunch", "dinner", "snack", "pre_workout
 function todayLocal(): string {
   return new Date().toLocaleDateString("en-CA");
 }
+
+const inputCls =
+  "rounded-xl border border-surface-raised bg-bg px-2 py-1.5 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none";
 
 function RecipeBuilder({ onDone }: { onDone: () => void }) {
   const createRecipe = useCreateRecipe();
@@ -32,44 +37,55 @@ function RecipeBuilder({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2 rounded border border-neutral-300 p-3">
-      <p className="text-xs font-medium text-neutral-500">New recipe</p>
+    <form onSubmit={handleSubmit} className="animate-enter space-y-2 rounded-2xl border border-surface-raised bg-surface p-3">
+      <p className="font-display text-xs font-bold uppercase tracking-wide text-muted">New recipe</p>
       <input required placeholder="Recipe name" value={name} onChange={(e) => setName(e.target.value)}
-        className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm" />
-      <label className="flex items-center gap-2 text-sm">
+        className={`w-full ${inputCls}`} />
+      <label className="flex items-center gap-2 text-sm text-fg">
         Servings
         <input type="number" min="1" value={servings} onChange={(e) => setServings(e.target.value)}
-          className="w-16 rounded border border-neutral-300 px-2 py-1.5 text-sm" />
+          className={`w-16 ${inputCls}`} />
       </label>
 
-      <ul className="space-y-1">
-        {items.map((item, i) => (
-          <li key={item.food.id} className="flex items-center justify-between text-sm">
-            <span>{item.food.name}</span>
-            <span className="flex items-center gap-2">
-              <input type="number" step="0.25" min="0.25" value={item.quantity}
-                onChange={(e) => setItems((prev) => prev.map((it, idx) => idx === i ? { ...it, quantity: Number(e.target.value) || 1 } : it))}
-                aria-label={`Quantity of ${item.food.name}`}
-                className="w-16 rounded border border-neutral-300 px-2 py-1 text-xs" />
-              <button type="button" onClick={() => setItems((prev) => prev.filter((_, idx) => idx !== i))}
-                aria-label={`Remove ${item.food.name}`} className="text-xs text-neutral-400 hover:text-red-600">✕</button>
-            </span>
-          </li>
-        ))}
-      </ul>
+      {items.length > 0 && (
+        <ul className="space-y-1.5">
+          {items.map((item, i) => (
+            <li key={item.food.id} className="flex items-center justify-between gap-2 rounded-xl bg-bg/60 px-2.5 py-1.5 text-sm text-fg">
+              <span className="truncate">{item.food.name}</span>
+              <span className="flex shrink-0 items-center gap-2">
+                <input type="number" step="0.25" min="0.25" value={item.quantity}
+                  onChange={(e) => setItems((prev) => prev.map((it, idx) => idx === i ? { ...it, quantity: Number(e.target.value) || 1 } : it))}
+                  aria-label={`Quantity of ${item.food.name}`}
+                  className={`w-16 ${inputCls} py-1 text-xs`} />
+                <button type="button" onClick={() => setItems((prev) => prev.filter((_, idx) => idx !== i))}
+                  aria-label={`Remove ${item.food.name}`}
+                  className="min-h-11 min-w-11 rounded-xl text-xs text-muted transition-colors duration-200 hover:text-red-400 active:scale-[0.98]">
+                  ✕
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {picking ? (
-        <FoodPicker onSelect={(food) => { setItems((prev) => [...prev, { food, quantity: 1 }]); setPicking(false); }} />
+        <FoodPicker foods={MOCK_FOODS} onSelect={(food) => { setItems((prev) => [...prev, { food, quantity: 1 }]); setPicking(false); }} />
       ) : (
-        <button type="button" onClick={() => setPicking(true)} className="text-xs text-blue-600 underline">+ Add ingredient</button>
+        <button type="button" onClick={() => setPicking(true)}
+          className="text-xs font-medium text-accent transition-colors duration-200 hover:text-fg">
+          + Add ingredient
+        </button>
       )}
 
       <div className="flex gap-2">
         <button type="submit" disabled={createRecipe.isPending || items.length === 0}
-          className="flex-1 rounded bg-neutral-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+          className="flex-1 min-h-11 rounded-xl bg-accent px-3 py-2 font-display text-sm font-bold text-bg transition-transform duration-200 active:scale-[0.98] disabled:opacity-50">
           {createRecipe.isPending ? "Saving…" : "Save recipe"}
         </button>
-        <button type="button" onClick={onDone} className="rounded border border-neutral-300 px-3 py-2 text-sm">Cancel</button>
+        <button type="button" onClick={onDone}
+          className="min-h-11 rounded-xl border border-surface-raised px-3 py-2 text-sm text-fg transition-colors duration-200 hover:bg-surface-raised active:scale-[0.98]">
+          Cancel
+        </button>
       </div>
     </form>
   );
@@ -80,48 +96,87 @@ function LogRecipeRow({ recipe }: { recipe: RecipeWithItems }) {
   const [portions, setPortions] = useState("1");
   const [meal, setMeal] = useState<MealType>("dinner");
   const [open, setOpen] = useState(false);
+  // Pop-confirm on a successful log — reuses .animate-spring-pop, same beat
+  // as LogEntryForm's single-food flow.
+  const [justLogged, setJustLogged] = useState(false);
+
+  const totalKcal = recipe.items.reduce((sum, i) => sum + i.food.calories * i.quantity, 0) / recipe.servings;
+
+  function handleLog() {
+    logRecipe.mutate(
+      { recipe, portions: Number(portions) || 1, meal, logDate: todayLocal() },
+      {
+        onSuccess: () => {
+          setJustLogged(true);
+          window.setTimeout(() => {
+            setJustLogged(false);
+            setOpen(false);
+          }, 900);
+        },
+      }
+    );
+  }
 
   return (
-    <li className="rounded border border-neutral-200 p-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium">{recipe.name}</p>
-          <p className="text-xs text-neutral-400">{recipe.servings} servings · {recipe.items.length} ingredients</p>
+    <li className="rounded-2xl border border-surface-raised bg-surface p-3 transition-colors duration-200 hover:border-accent/30">
+      <div className="flex items-center gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/15 font-display text-sm font-bold text-accent">
+          {recipe.name.charAt(0).toUpperCase()}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-display text-sm font-bold text-fg">{recipe.name}</p>
+          <p className="text-xs text-muted">{recipe.servings} servings · {recipe.items.length} ingredients</p>
         </div>
-        <button onClick={() => setOpen((v) => !v)} className="text-xs text-blue-600 underline">
+        <span className="shrink-0 font-display text-sm font-bold text-fg">{Math.round(totalKcal)}</span>
+        <button onClick={() => setOpen((v) => !v)}
+          className="shrink-0 text-xs font-medium text-accent transition-colors duration-200 hover:text-fg">
           {open ? "Close" : "Log"}
         </button>
       </div>
       {open && (
-        <div className="mt-2 flex items-center gap-2">
-          <input type="number" step="0.5" min="0.5" value={portions} onChange={(e) => setPortions(e.target.value)}
-            aria-label="Portions" className="w-16 rounded border border-neutral-300 px-2 py-1.5 text-sm" />
-          <select value={meal} onChange={(e) => setMeal(e.target.value as MealType)} aria-label="Meal"
-            className="rounded border border-neutral-300 px-2 py-1.5 text-sm">
-            {MEALS.map((m) => <option key={m} value={m}>{m.replace("_", " ")}</option>)}
-          </select>
-          <button
-            onClick={() => logRecipe.mutate({ recipe, portions: Number(portions) || 1, meal, logDate: todayLocal() }, { onSuccess: () => setOpen(false) })}
-            disabled={logRecipe.isPending}
-            className="rounded bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">
-            {logRecipe.isPending ? "Logging…" : "Log to today"}
-          </button>
+        <div className="mt-3 flex items-center gap-2">
+          {justLogged ? (
+            <span className="animate-spring-pop font-display text-sm font-bold text-accent">✓ Logged to today</span>
+          ) : (
+            <>
+              <input type="number" step="0.5" min="0.5" value={portions} onChange={(e) => setPortions(e.target.value)}
+                aria-label="Portions" className={`w-16 ${inputCls}`} />
+              <select value={meal} onChange={(e) => setMeal(e.target.value as MealType)} aria-label="Meal"
+                className={inputCls}>
+                {MEALS.map((m) => <option key={m} value={m}>{m.replace("_", " ")}</option>)}
+              </select>
+              <button
+                onClick={handleLog}
+                disabled={logRecipe.isPending}
+                className="min-h-11 rounded-xl bg-accent px-3 py-1.5 font-display text-xs font-bold text-bg transition-transform duration-200 active:scale-[0.98] disabled:opacity-50">
+                {logRecipe.isPending ? "Logging…" : "Log to today"}
+              </button>
+            </>
+          )}
         </div>
       )}
     </li>
   );
 }
 
+// ponytail: recipes list rendered from MOCK_RECIPES instead of useRecipes() —
+// preview pass, same as the dashboard. Creating a new recipe / logging one to
+// today still go through the real useCreateRecipe/useLogRecipe mutations, so
+// they won't appear here until real recipe data exists to query.
 export default function RecipesPage() {
-  const { data: recipes } = useRecipes();
+  const recipes = MOCK_RECIPES;
   const [building, setBuilding] = useState(false);
 
   return (
-    <main className="p-4 pb-24">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Recipes</h1>
+    <main className="min-h-screen bg-bg p-4 pb-24">
+      <FoodSubnav />
+      <div className="mt-3 flex items-center justify-between">
+        <h1 className="font-display text-lg font-bold text-fg">Recipes</h1>
         {!building && (
-          <button onClick={() => setBuilding(true)} className="text-xs text-blue-600 underline">+ New recipe</button>
+          <button onClick={() => setBuilding(true)}
+            className="text-xs font-medium text-accent transition-colors duration-200 hover:text-fg">
+            + New recipe
+          </button>
         )}
       </div>
 
@@ -131,10 +186,10 @@ export default function RecipesPage() {
         </div>
       )}
 
-      <ul className="mt-4 space-y-2">
+      <ul className="stagger mt-4 space-y-2">
         {recipes?.map((r) => <LogRecipeRow key={r.id} recipe={r} />)}
         {recipes?.length === 0 && !building && (
-          <li className="text-xs text-neutral-400">No recipes yet. Batch meal-prep? Save it once, log it every day.</li>
+          <li className="text-xs text-muted">No recipes yet. Batch meal-prep? Save it once, log it every day.</li>
         )}
       </ul>
     </main>

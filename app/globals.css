@@ -27,3 +27,251 @@ body {
   background: var(--bg);
   color: var(--fg);
 }
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-enter {
+  animation: enter 0.4s ease-out both;
+}
+
+/* Stagger direct children fade+slight-Y in on mount — used for grids of async tiles. */
+.stagger > * {
+  opacity: 0;
+  animation: enter 0.4s ease-out forwards;
+}
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 60ms; }
+.stagger > *:nth-child(3) { animation-delay: 120ms; }
+.stagger > *:nth-child(4) { animation-delay: 180ms; }
+.stagger > *:nth-child(5) { animation-delay: 240ms; }
+.stagger > *:nth-child(6) { animation-delay: 300ms; }
+.stagger > *:nth-child(7) { animation-delay: 360ms; }
+.stagger > *:nth-child(8) { animation-delay: 420ms; }
+.stagger > *:nth-child(9) { animation-delay: 480ms; }
+.stagger > *:nth-child(10) { animation-delay: 540ms; }
+
+/* Kinetic settings-tab motion: subtle confirmation feedback only.
+   Spring toggle + save-button morph are pure transitions (in JSX via
+   Tailwind arbitrary values); these two are repeating/one-shot @keyframes
+   that need real animation rules. */
+@keyframes sweep {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(120%); }
+}
+.animate-sweep {
+  animation: sweep 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes sync-ping {
+  0% { transform: scale(0.6); opacity: 0.7; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+.animate-sync-ping {
+  animation: sync-ping 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-sweep,
+  .animate-sync-ping {
+    animation: none;
+  }
+}
+
+/* Kinetic body-tab motion: trend line draws itself on via stroke-dashoffset,
+   fill/dot/deltas pop in after. Delays are set inline per-instance where the
+   mockup staggered them (measurement deltas, streak label). */
+@keyframes draw-line {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes fade-in {
+  to { opacity: 1; }
+}
+@keyframes pop-in {
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes rise-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.draw-path {
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  animation: draw-line 1.6s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards;
+}
+.draw-fill {
+  opacity: 0;
+  animation: fade-in 0.8s ease 1s forwards;
+}
+.draw-dot {
+  opacity: 0;
+  transform-origin: center;
+  animation: pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 1.5s forwards;
+}
+.fade-in-delayed {
+  opacity: 0;
+  animation: fade-in 0.5s ease 1.1s forwards;
+}
+.rise-in-delayed {
+  opacity: 0;
+  transform: translateY(4px);
+  animation: rise-in 0.4s ease forwards;
+}
+
+/* Dashboard-tab kinetic additions: radial rings (streak, macro), a continuous
+   glow-pulse for "live" markers (chart end-dots), and slow-drifting aurora
+   blobs behind the page. Reuses the draw/fade/pop vocabulary above. */
+@keyframes ring-fill {
+  to { stroke-dashoffset: var(--ring-offset, 0); }
+}
+.ring-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: ring-fill 1.1s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+}
+
+@keyframes glow-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: 0.6; }
+}
+.pulse-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: glow-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes drift {
+  from { transform: translate(0, 0); }
+  to { transform: translate(22px, 26px); }
+}
+.animate-drift {
+  animation: drift 18s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draw-path,
+  .draw-fill,
+  .draw-dot,
+  .fade-in-delayed,
+  .rise-in-delayed,
+  .ring-draw,
+  .pulse-dot,
+  .animate-drift {
+    opacity: 1;
+    transform: none;
+    animation: none;
+    stroke-dashoffset: var(--ring-offset, 0);
+  }
+}
+
+/* Kinetic mobility-tab motion: Start spawns a small particle burst and morphs
+   the card into a live timer with a pulsing mini progress ring; Stop bumps
+   the weekly ring (JS-driven, see WeekRing.tsx) and slides a new row into
+   Recent Sessions. */
+@keyframes mobility-burst {
+  to {
+    transform: translate(var(--dx), var(--dy)) scale(0);
+    opacity: 0;
+  }
+}
+.animate-mobility-burst {
+  animation: mobility-burst 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes mobility-pulse-ring {
+  0%,
+  100% {
+    stroke-dashoffset: 130;
+  }
+  50% {
+    stroke-dashoffset: 20;
+  }
+}
+.animate-mobility-pulse-ring {
+  animation: mobility-pulse-ring 1.6s ease-in-out infinite;
+}
+
+@keyframes mobility-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-mobility-slide-in {
+  animation: mobility-slide-in 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-mobility-burst {
+    display: none;
+  }
+  .animate-mobility-pulse-ring {
+    animation: none;
+    stroke-dashoffset: 60;
+  }
+  .animate-mobility-slide-in {
+    animation: none;
+  }
+}
+
+/* Kinetic train-tab motion: checkball spring-pops and the set row flashes
+   accent when a set is logged; the live rest-timer ring (RestTimer.tsx)
+   animates stroke-dashoffset inline via a Tailwind transition, not a
+   keyframe, since it tracks a continuously-changing countdown value. */
+@keyframes spring-pop {
+  0% { transform: scale(0.6); }
+  55% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+.animate-spring-pop {
+  animation: spring-pop 480ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes set-complete-flash {
+  0% { background-color: color-mix(in srgb, var(--accent) 16%, transparent); }
+  100% { background-color: transparent; }
+}
+.animate-set-complete {
+  animation: set-complete-flash 600ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-spring-pop {
+    animation: none;
+  }
+  .animate-set-complete {
+    animation: none;
+    background-color: transparent;
+  }
+}
+
+/* Kinetic food-tab motion: dual macro ring (protein outer / kcal inner)
+   fills in via stroke-dashoffset, same double-rAF pattern as WeekRing.tsx
+   (see MacroSummary.tsx). Meal cards stagger in via the shared .stagger
+   utility; logging a food reuses .animate-spring-pop above for the confirm
+   state. Empty meal slots get a subtle bounce on the "+" icon to invite a tap. */
+@keyframes food-empty-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.animate-food-bounce {
+  animation: food-empty-bounce 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-food-bounce {
+    animation: none;
+  }
+}

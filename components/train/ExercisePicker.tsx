@@ -23,7 +23,7 @@ export function ExercisePicker({ onSelect }: { onSelect: (exercise: Exercise) =>
             <button
               type="button"
               onClick={() => onSelect(ex)}
-              className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-left text-sm text-fg hover:bg-surface-raised"
+              className="flex w-full items-center justify-between rounded-xl px-2.5 py-2.5 text-left text-sm font-medium text-fg transition-all duration-150 hover:bg-surface-raised active:scale-[0.98]"
             >
               <span>{ex.name}</span>
               <span className="text-xs text-muted">{ex.equipment}</span>
@@ -31,7 +31,7 @@ export function ExercisePicker({ onSelect }: { onSelect: (exercise: Exercise) =>
           </li>
         ))}
         {exercises?.length === 0 && !isLoading && (
-          <li className="px-2 py-2 text-xs text-muted">No matches.</li>
+          <li className="px-2.5 py-2.5 text-xs text-muted">No matches.</li>
         )}
       </ul>
     </div>

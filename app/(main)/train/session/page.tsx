@@ -1,45 +1,56 @@
 "use client";
 
-import { useMemo } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useActiveSessionStore } from "@/stores/activeSession";
-import { useExercisesByIds } from "@/lib/queries/exercises";
-import { useLogSet, useCompleteSession } from "@/lib/queries/sessions";
 import { ExerciseBlock } from "@/components/train/ExerciseBlock";
 import { RestTimer } from "@/components/train/RestTimer";
+import { MOCK_ACTIVE_SESSION, MOCK_EXERCISE_NAMES } from "@/lib/mock/trainMock";
 
+// ponytail: seeds the real activeSession Zustand store with MOCK_ACTIVE_SESSION
+// on mount instead of coming from useStartSession — no seed data locally, this
+// is a visual preview of a session in progress. Logging a set still updates
+// the (local, in-memory) store and starts the real rest timer, but the
+// network writes (useLogSet, useCompleteSession) are skipped so this doesn't
+// enqueue outbox entries for fake ids. Exercise names come from a static
+// lookup instead of useExercisesByIds since the exercises table has no seed
+// data either. Swap back to the real hooks once templates/exercises/sessions
+// are seeded in the real DB.
 export default function ActiveSessionPage() {
   const router = useRouter();
   const session = useActiveSessionStore((s) => s.session);
+  const startSessionInStore = useActiveSessionStore((s) => s.startSession);
+  const endSessionInStore = useActiveSessionStore((s) => s.endSession);
   const completeSetInStore = useActiveSessionStore((s) => s.completeSet);
   const addSetInStore = useActiveSessionStore((s) => s.addSet);
   const setDeload = useActiveSessionStore((s) => s.setDeload);
   const setBodyweight = useActiveSessionStore((s) => s.setBodyweight);
   const startRestTimer = useActiveSessionStore((s) => s.startRestTimer);
 
-  const logSet = useLogSet();
-  const completeSession = useCompleteSession();
+  useEffect(() => {
+    if (!session) {
+      startSessionInStore({
+        clientId: MOCK_ACTIVE_SESSION.clientId,
+        templateId: MOCK_ACTIVE_SESSION.templateId,
+        templateNameSnapshot: MOCK_ACTIVE_SESSION.templateNameSnapshot,
+        isDeload: MOCK_ACTIVE_SESSION.isDeload,
+        exercises: MOCK_ACTIVE_SESSION.exercises,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const exerciseIds = useMemo(() => session?.exercises.map((e) => e.exerciseId) ?? [], [session]);
-  const { data: exerciseNames } = useExercisesByIds(exerciseIds);
+  const elapsed = useElapsedLabel(session?.startedAt ?? null);
 
   if (!session) {
-    return (
-      <main className="p-6 text-center">
-        <p className="text-sm text-muted">No active session.</p>
-        <Link href="/train/templates" className="mt-2 inline-block text-sm text-accent">
-          Go to templates
-        </Link>
-      </main>
-    );
+    return null;
   }
 
-  async function handleLogSet(
+  function handleLogSet(
     exerciseClientId: string,
     setClientId: string,
-    setNumber: number,
-    isWarmup: boolean,
+    _setNumber: number,
+    _isWarmup: boolean,
     result: { reps: number; weightKg: number; rpe: number | null },
     restSeconds: number | null
   ) {
@@ -48,45 +59,35 @@ export default function ActiveSessionPage() {
       actualWeightKg: result.weightKg,
       actualRpe: result.rpe,
     });
-    await logSet.mutateAsync({
-      setClientId,
-      sessionExerciseClientId: exerciseClientId,
-      setNumber,
-      isWarmup,
-      actualReps: result.reps,
-      actualWeightKg: result.weightKg,
-      actualRpe: result.rpe,
-    });
     if (restSeconds) startRestTimer(restSeconds);
   }
 
-  async function handleFinish() {
-    if (!session) return;
-    await completeSession.mutateAsync({
-      clientId: session.clientId,
-      templateId: session.templateId,
-      templateNameSnapshot: session.templateNameSnapshot,
-      startedAt: session.startedAt,
-      isDeload: session.isDeload,
-      bodyweightKg: session.bodyweightKg,
-    });
+  function handleFinish() {
+    endSessionInStore();
     router.push("/train/history");
   }
 
   return (
     <main className="p-4 pb-32">
-      <div className="flex items-center justify-between">
-        <h1 className="font-display text-xl font-bold text-fg">{session.templateNameSnapshot ?? "Workout"}</h1>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="font-display text-xl font-bold tracking-tight text-fg">
+            {session.templateNameSnapshot ?? "Workout"}
+          </h1>
+          <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-accent">
+            <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent motion-safe:animate-pulse" />
+            Live · {elapsed} elapsed
+          </div>
+        </div>
         <button
           onClick={handleFinish}
-          disabled={completeSession.isPending}
-          className="rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-bg disabled:opacity-50"
+          className="rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-bg transition-transform duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
         >
           Finish
         </button>
       </div>
 
-      <div className="mt-2 flex items-center gap-4 text-sm text-fg">
+      <div className="mt-3 flex items-center gap-4 text-sm text-fg">
         <label className="flex items-center gap-1">
           <input
             type="checkbox"
@@ -102,19 +103,19 @@ export default function ActiveSessionPage() {
             type="number"
             defaultValue={session.bodyweightKg ?? ""}
             onBlur={(e) => setBodyweight(e.target.value === "" ? null : Number(e.target.value))}
-            className="w-16 rounded-lg border border-surface-raised bg-surface-raised px-2 py-1 text-fg focus:border-accent focus:outline-none"
+            className="w-16 rounded-lg border border-surface-raised bg-surface-raised px-2 py-1 font-mono tabular-nums text-fg focus:border-accent focus:outline-none"
           />
         </label>
       </div>
 
-      <div className="mt-4 space-y-4">
+      <div className="stagger mt-4 space-y-4">
         {[...session.exercises]
           .sort((a, b) => a.position - b.position)
           .map((ex) => (
             <ExerciseBlock
               key={ex.clientId}
               exercise={ex}
-              exerciseName={exerciseNames?.[ex.exerciseId] ?? "…"}
+              exerciseName={MOCK_EXERCISE_NAMES[ex.exerciseId] ?? "…"}
               onLogSet={(setClientId, setNumber, isWarmup, result) =>
                 handleLogSet(ex.clientId, setClientId, setNumber, isWarmup, result, ex.restSeconds)
               }
@@ -126,4 +127,25 @@ export default function ActiveSessionPage() {
       <RestTimer />
     </main>
   );
+}
+
+/** mm:ss elapsed since session start, ticking every second. */
+function useElapsedLabel(startedAt: string | null): string {
+  const [label, setLabel] = useState("0:00");
+
+  useEffect(() => {
+    if (!startedAt) return;
+    const start = new Date(startedAt).getTime();
+    function tick() {
+      const totalSeconds = Math.max(0, Math.floor((Date.now() - start) / 1000));
+      const mm = Math.floor(totalSeconds / 60);
+      const ss = totalSeconds % 60;
+      setLabel(`${mm}:${String(ss).padStart(2, "0")}`);
+    }
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  return label;
 }

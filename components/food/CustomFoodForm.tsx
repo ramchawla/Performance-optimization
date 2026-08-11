@@ -34,25 +34,23 @@ export function CustomFoodForm({ onCreated }: { onCreated: (food: Food) => void 
     onCreated(food);
   }
 
+  const inputCls =
+    "w-full rounded-xl border border-surface-raised bg-bg px-2 py-1.5 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none";
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-2 rounded border border-neutral-300 p-3">
-      <p className="text-xs font-medium text-neutral-500">New custom food</p>
-      <input required placeholder="Name" value={name} onChange={(e) => setName(e.target.value)}
-        className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm" />
+    <form onSubmit={handleSubmit} className="space-y-2 rounded-2xl border border-surface-raised bg-surface p-3">
+      <p className="font-display text-xs font-bold uppercase tracking-wide text-muted">New custom food</p>
+      <input required placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
       <input required placeholder="Serving (e.g. 1 cup, 100g)" value={servingDesc}
-        onChange={(e) => setServingDesc(e.target.value)}
-        className="w-full rounded border border-neutral-300 px-2 py-1.5 text-sm" />
+        onChange={(e) => setServingDesc(e.target.value)} className={inputCls} />
       <div className="grid grid-cols-4 gap-2">
-        <input required type="number" placeholder="kcal" value={calories} onChange={(e) => setCalories(e.target.value)}
-          className="rounded border border-neutral-300 px-2 py-1.5 text-sm" />
-        <input type="number" placeholder="protein g" value={protein} onChange={(e) => setProtein(e.target.value)}
-          className="rounded border border-neutral-300 px-2 py-1.5 text-sm" />
-        <input type="number" placeholder="carbs g" value={carbs} onChange={(e) => setCarbs(e.target.value)}
-          className="rounded border border-neutral-300 px-2 py-1.5 text-sm" />
-        <input type="number" placeholder="fat g" value={fat} onChange={(e) => setFat(e.target.value)}
-          className="rounded border border-neutral-300 px-2 py-1.5 text-sm" />
+        <input required type="number" placeholder="kcal" value={calories} onChange={(e) => setCalories(e.target.value)} className={inputCls} />
+        <input type="number" placeholder="protein g" value={protein} onChange={(e) => setProtein(e.target.value)} className={inputCls} />
+        <input type="number" placeholder="carbs g" value={carbs} onChange={(e) => setCarbs(e.target.value)} className={inputCls} />
+        <input type="number" placeholder="fat g" value={fat} onChange={(e) => setFat(e.target.value)} className={inputCls} />
       </div>
-      <button type="button" onClick={() => setShowMicros((v) => !v)} className="text-xs text-blue-600 underline">
+      <button type="button" onClick={() => setShowMicros((v) => !v)}
+        className="text-xs font-medium text-accent transition-colors duration-200 hover:text-fg">
         {showMicros ? "Hide" : "Add"} micronutrients
       </button>
       {showMicros && (
@@ -61,12 +59,12 @@ export function CustomFoodForm({ onCreated }: { onCreated: (food: Food) => void 
             <input key={key} type="number" placeholder={MICRO_VOCAB[key]}
               value={micros[key] ?? ""}
               onChange={(e) => setMicros((m) => ({ ...m, [key]: e.target.value }))}
-              className="rounded border border-neutral-300 px-2 py-1.5 text-sm" />
+              className={inputCls} />
           ))}
         </div>
       )}
       <button type="submit" disabled={createFood.isPending}
-        className="w-full rounded bg-neutral-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
+        className="w-full min-h-11 rounded-xl bg-accent px-3 py-2 font-display text-sm font-bold text-bg transition-transform duration-200 active:scale-[0.98] disabled:opacity-50">
         {createFood.isPending ? "Saving…" : "Save food"}
       </button>
     </form>
