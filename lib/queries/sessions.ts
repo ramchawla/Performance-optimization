@@ -206,18 +206,47 @@ export function useCompleteSession() {
 
 const HISTORY_KEY = ["session-history"] as const;
 
+export type WorkoutSessionSummary = WorkoutSession & { volumeKg: number; durationMin: number | null };
+
+/** Working-set volume (excludes warmups) and duration, joined in per session for the history list. */
 export function useSessionHistory() {
   return useQuery({
     queryKey: HISTORY_KEY,
-    queryFn: async (): Promise<WorkoutSession[]> => {
+    queryFn: async (): Promise<WorkoutSessionSummary[]> => {
       const supabase = createClient();
-      const { data, error } = await supabase
+      const { data: sessions, error } = await supabase
         .from("workout_sessions")
         .select("*")
         .not("completed_at", "is", null)
         .order("started_at", { ascending: false });
       if (error) throw error;
-      return data;
+      if (sessions.length === 0) return [];
+
+      const { data: rows, error: setsErr } = await supabase
+        .from("session_exercises")
+        .select("session_id, session_sets(actual_weight_kg, actual_reps, is_warmup)")
+        .in(
+          "session_id",
+          sessions.map((s) => s.id)
+        );
+      if (setsErr) throw setsErr;
+
+      type Row = { session_id: string; session_sets: { actual_weight_kg: number | null; actual_reps: number | null; is_warmup: boolean }[] };
+      const volumeBySession = new Map<string, number>();
+      for (const row of rows as unknown as Row[]) {
+        const vol = row.session_sets
+          .filter((s) => !s.is_warmup)
+          .reduce((sum, s) => sum + (s.actual_weight_kg ?? 0) * (s.actual_reps ?? 0), 0);
+        volumeBySession.set(row.session_id, (volumeBySession.get(row.session_id) ?? 0) + vol);
+      }
+
+      return sessions.map((s) => ({
+        ...s,
+        volumeKg: volumeBySession.get(s.id) ?? 0,
+        durationMin: s.completed_at
+          ? Math.round((new Date(s.completed_at).getTime() - new Date(s.started_at).getTime()) / 60000)
+          : null,
+      }));
     },
   });
 }

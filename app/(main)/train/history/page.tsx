@@ -1,15 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { MOCK_HISTORY } from "@/lib/mock/trainMock";
+import { useSessionHistory } from "@/lib/queries/sessions";
 import { displayWeightKg } from "@/lib/units";
 
-// ponytail: rendering MOCK_HISTORY directly instead of useSessionHistory() —
-// no seed data locally, this is a visual preview. Swap back to
-// useSessionHistory() once workout sessions are seeded in the real DB.
 export default function HistoryPage() {
-  const sessions = MOCK_HISTORY;
-  const isLoading = false;
+  const { data: sessions, isLoading } = useSessionHistory();
 
   return (
     <main className="space-y-4 p-4">

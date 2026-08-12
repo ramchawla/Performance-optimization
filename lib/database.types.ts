@@ -408,9 +408,13 @@ export type Database = {
           height_cm: number | null
           sex: string | null
           target_calories: number | null
+          target_calories_training_day: number | null
           target_carbs_g: number | null
+          target_carbs_training_day_g: number | null
           target_fat_g: number | null
+          target_fat_training_day_g: number | null
           target_protein_g: number | null
+          target_protein_training_day_g: number | null
           timezone: string
           unit_distance: string
           unit_weight: string
@@ -426,9 +430,13 @@ export type Database = {
           height_cm?: number | null
           sex?: string | null
           target_calories?: number | null
+          target_calories_training_day?: number | null
           target_carbs_g?: number | null
+          target_carbs_training_day_g?: number | null
           target_fat_g?: number | null
+          target_fat_training_day_g?: number | null
           target_protein_g?: number | null
+          target_protein_training_day_g?: number | null
           timezone?: string
           unit_distance?: string
           unit_weight?: string
@@ -444,9 +452,13 @@ export type Database = {
           height_cm?: number | null
           sex?: string | null
           target_calories?: number | null
+          target_calories_training_day?: number | null
           target_carbs_g?: number | null
+          target_carbs_training_day_g?: number | null
           target_fat_g?: number | null
+          target_fat_training_day_g?: number | null
           target_protein_g?: number | null
+          target_protein_training_day_g?: number | null
           timezone?: string
           unit_distance?: string
           unit_weight?: string

@@ -3,10 +3,18 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { type TemplateExerciseWithName } from "@/lib/queries/templates";
+import {
+  type TemplateExerciseWithName,
+  type TemplateExercisePatch,
+  useTemplateDetail,
+  useAddTemplateExercise,
+  useUpdateTemplateExercise,
+  useRemoveTemplateExercise,
+  useReorderTemplateExercises,
+} from "@/lib/queries/templates";
+import { useStartSession } from "@/lib/queries/sessions";
 import { ExercisePicker } from "@/components/train/ExercisePicker";
 import { displayWeightKg, inputToKg } from "@/lib/units";
-import { MOCK_TEMPLATE_DETAILS, MOCK_TEMPLATES } from "@/lib/mock/trainMock";
 
 const WEIGHT_UNIT = "lb" as const; // profile-driven unit selection is out of scope for Phase 1
 
@@ -40,20 +48,18 @@ function groupForDisplay(exercises: TemplateExerciseWithName[]): RenderGroup[] {
   return groups;
 }
 
-// ponytail: rendering MOCK_TEMPLATE_DETAILS from local state instead of
-// useTemplateDetail(id) — no seed data locally, this is a visual preview.
-// Reorder/superset/field edits mutate local state only (no network); "Start
-// Session" navigates straight to /train/session, which seeds its own mock
-// active session, instead of calling useStartSession. Swap back to the real
-// hooks (useTemplateDetail, useAddTemplateExercise, useUpdateTemplateExercise,
-// useRemoveTemplateExercise, useReorderTemplateExercises, useStartSession)
-// once templates/exercises are seeded in the real DB.
 export default function TemplateDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const detail = MOCK_TEMPLATE_DETAILS[id] ?? MOCK_TEMPLATE_DETAILS[MOCK_TEMPLATES[0].id];
-  const template = detail.template;
-  const [exercises, setExercises] = useState<TemplateExerciseWithName[]>(detail.exercises);
+  const { data, isLoading } = useTemplateDetail(id);
+  const addExercise = useAddTemplateExercise(id);
+  const updateExercise = useUpdateTemplateExercise(id);
+  const removeExercise = useRemoveTemplateExercise(id);
+  const reorderExercises = useReorderTemplateExercises(id);
+  const startSession = useStartSession();
+
+  const exercises = data?.exercises ?? [];
+  const template = data?.template;
 
   const [showPicker, setShowPicker] = useState(false);
   const [isDeload, setIsDeload] = useState(false);
@@ -61,15 +67,14 @@ export default function TemplateDetailPage() {
   function move(index: number, direction: -1 | 1) {
     const target = index + direction;
     if (target < 0 || target >= exercises.length) return;
-    setExercises((prev) => {
-      const next = [...prev];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
+    reorderExercises.mutate([
+      { id: exercises[index].id, position: exercises[target].position },
+      { id: exercises[target].id, position: exercises[index].position },
+    ]);
   }
 
-  function patchExercise(id: string, patch: Record<string, number | string | null>) {
-    setExercises((prev) => prev.map((e) => (e.id === id ? ({ ...e, ...patch } as TemplateExerciseWithName) : e)));
+  function patchExercise(exerciseId: string, patch: Record<string, number | string | null>) {
+    updateExercise.mutate({ id: exerciseId, patch: patch as TemplateExercisePatch });
   }
 
   function toggleSuperset(index: number) {
@@ -88,11 +93,38 @@ export default function TemplateDetailPage() {
     }
   }
 
-  function handleStartSession() {
-    router.push("/train/session");
+  async function handleStartSession() {
+    if (!template) return;
+    const sessionId = await startSession.mutateAsync({
+      templateId: template.id,
+      templateName: template.name,
+      isDeload,
+      templateExercises: exercises,
+    });
+    if (sessionId) router.push("/train/session");
   }
 
   const groups = groupForDisplay(exercises);
+
+  if (isLoading) {
+    return (
+      <main className="space-y-4 p-4">
+        <div className="h-6 w-32 animate-pulse rounded bg-surface-raised" />
+        <div className="h-40 animate-pulse rounded-2xl bg-surface-raised" />
+      </main>
+    );
+  }
+
+  if (!template) {
+    return (
+      <main className="space-y-4 p-4">
+        <Link href="/train/templates" className="inline-block text-xs text-muted transition-colors hover:text-fg">
+          ← Templates
+        </Link>
+        <p className="text-sm text-muted">Template not found.</p>
+      </main>
+    );
+  }
 
   return (
     <main className="space-y-4 p-4">
@@ -134,7 +166,7 @@ export default function TemplateDetailPage() {
               onMove={(dir) => move(g.index, dir)}
               onToggleSuperset={() => toggleSuperset(g.index)}
               onPatch={(patch) => patchExercise(g.exercise.id, patch)}
-              onRemove={() => setExercises((prev) => prev.filter((e) => e.id !== g.exercise.id))}
+              onRemove={() => removeExercise.mutate(g.exercise.id)}
             />
           ) : (
             <li key={`superset-${gi}`} className="rounded-2xl border border-accent/30 bg-accent/5 p-2">
@@ -152,7 +184,7 @@ export default function TemplateDetailPage() {
                     onMove={(dir) => move(index, dir)}
                     onToggleSuperset={() => toggleSuperset(index)}
                     onPatch={(patch) => patchExercise(exercise.id, patch)}
-                    onRemove={() => setExercises((prev) => prev.filter((e) => e.id !== exercise.id))}
+                    onRemove={() => removeExercise.mutate(exercise.id)}
                     nested
                   />
                 ))}
@@ -171,24 +203,11 @@ export default function TemplateDetailPage() {
           <ExercisePicker
             onSelect={(exercise) => {
               const nextPosition = (exercises[exercises.length - 1]?.position ?? 0) + 10;
-              setExercises((prev) => [
-                ...prev,
-                {
-                  id: `te-preview-${prev.length}`,
-                  template_id: template.id,
-                  exercise_id: exercise.id,
-                  position: nextPosition,
-                  superset_group: null,
-                  target_sets: 3,
-                  target_reps_min: null,
-                  target_reps_max: null,
-                  target_weight_kg: null,
-                  target_rpe: null,
-                  rest_seconds: exercise.default_rest_seconds,
-                  notes: null,
-                  exercises: { name: exercise.name },
-                },
-              ]);
+              addExercise.mutate({
+                exerciseId: exercise.id,
+                position: nextPosition,
+                restSeconds: exercise.default_rest_seconds,
+              });
               setShowPicker(false);
             }}
           />

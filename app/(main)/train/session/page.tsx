@@ -3,42 +3,30 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useActiveSessionStore } from "@/stores/activeSession";
+import { useExercisesByIds } from "@/lib/queries/exercises";
+import { useLogSet, useCompleteSession } from "@/lib/queries/sessions";
 import { ExerciseBlock } from "@/components/train/ExerciseBlock";
 import { RestTimer } from "@/components/train/RestTimer";
-import { MOCK_ACTIVE_SESSION, MOCK_EXERCISE_NAMES } from "@/lib/mock/trainMock";
 
-// ponytail: seeds the real activeSession Zustand store with MOCK_ACTIVE_SESSION
-// on mount instead of coming from useStartSession — no seed data locally, this
-// is a visual preview of a session in progress. Logging a set still updates
-// the (local, in-memory) store and starts the real rest timer, but the
-// network writes (useLogSet, useCompleteSession) are skipped so this doesn't
-// enqueue outbox entries for fake ids. Exercise names come from a static
-// lookup instead of useExercisesByIds since the exercises table has no seed
-// data either. Swap back to the real hooks once templates/exercises/sessions
-// are seeded in the real DB.
+// Session state is populated by useStartSession() (template detail page)
+// before navigating here — this page never seeds its own session.
 export default function ActiveSessionPage() {
   const router = useRouter();
   const session = useActiveSessionStore((s) => s.session);
-  const startSessionInStore = useActiveSessionStore((s) => s.startSession);
-  const endSessionInStore = useActiveSessionStore((s) => s.endSession);
   const completeSetInStore = useActiveSessionStore((s) => s.completeSet);
   const addSetInStore = useActiveSessionStore((s) => s.addSet);
   const setDeload = useActiveSessionStore((s) => s.setDeload);
   const setBodyweight = useActiveSessionStore((s) => s.setBodyweight);
   const startRestTimer = useActiveSessionStore((s) => s.startRestTimer);
 
+  const logSet = useLogSet();
+  const completeSession = useCompleteSession();
+  const exerciseIds = session?.exercises.map((e) => e.exerciseId) ?? [];
+  const { data: exerciseNames } = useExercisesByIds(exerciseIds);
+
   useEffect(() => {
-    if (!session) {
-      startSessionInStore({
-        clientId: MOCK_ACTIVE_SESSION.clientId,
-        templateId: MOCK_ACTIVE_SESSION.templateId,
-        templateNameSnapshot: MOCK_ACTIVE_SESSION.templateNameSnapshot,
-        isDeload: MOCK_ACTIVE_SESSION.isDeload,
-        exercises: MOCK_ACTIVE_SESSION.exercises,
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!session) router.replace("/train/templates");
+  }, [session, router]);
 
   const elapsed = useElapsedLabel(session?.startedAt ?? null);
 
@@ -49,8 +37,8 @@ export default function ActiveSessionPage() {
   function handleLogSet(
     exerciseClientId: string,
     setClientId: string,
-    _setNumber: number,
-    _isWarmup: boolean,
+    setNumber: number,
+    isWarmup: boolean,
     result: { reps: number; weightKg: number; rpe: number | null },
     restSeconds: number | null
   ) {
@@ -59,11 +47,29 @@ export default function ActiveSessionPage() {
       actualWeightKg: result.weightKg,
       actualRpe: result.rpe,
     });
+    logSet.mutate({
+      setClientId,
+      sessionExerciseClientId: exerciseClientId,
+      setNumber,
+      isWarmup,
+      actualReps: result.reps,
+      actualWeightKg: result.weightKg,
+      actualRpe: result.rpe,
+    });
     if (restSeconds) startRestTimer(restSeconds);
   }
 
-  function handleFinish() {
-    endSessionInStore();
+  async function handleFinish() {
+    if (!session) return;
+    // useCompleteSession ends the store itself on success — don't duplicate here.
+    await completeSession.mutateAsync({
+      clientId: session.clientId,
+      templateId: session.templateId,
+      templateNameSnapshot: session.templateNameSnapshot,
+      startedAt: session.startedAt,
+      isDeload: session.isDeload,
+      bodyweightKg: session.bodyweightKg,
+    });
     router.push("/train/history");
   }
 
@@ -115,7 +121,7 @@ export default function ActiveSessionPage() {
             <ExerciseBlock
               key={ex.clientId}
               exercise={ex}
-              exerciseName={MOCK_EXERCISE_NAMES[ex.exerciseId] ?? "…"}
+              exerciseName={exerciseNames?.[ex.exerciseId] ?? "…"}
               onLogSet={(setClientId, setNumber, isWarmup, result) =>
                 handleLogSet(ex.clientId, setClientId, setNumber, isWarmup, result, ex.restSeconds)
               }

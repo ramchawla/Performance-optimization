@@ -2,47 +2,31 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { MOCK_TEMPLATES } from "@/lib/mock/trainMock";
-import type { Template } from "@/lib/queries/templates";
+import { useTemplates, useCreateTemplate, useArchiveTemplate, useReorderTemplates } from "@/lib/queries/templates";
 
-// ponytail: rendering MOCK_TEMPLATES from local state instead of useTemplates()
-// — no seed data locally, this is a visual preview. Move/Archive/Add mutate the
-// local array only (no network). Swap back to useTemplates() + the real
-// useCreateTemplate/useArchiveTemplate/useReorderTemplates mutations once
-// templates are seeded in the real DB.
 export default function TemplatesPage() {
-  const [templates, setTemplates] = useState<Template[]>(MOCK_TEMPLATES);
-  const isLoading = false;
+  const { data: templates, isLoading } = useTemplates();
+  const createTemplate = useCreateTemplate();
+  const archiveTemplate = useArchiveTemplate();
+  const reorderTemplates = useReorderTemplates();
   const [name, setName] = useState("");
 
   function move(index: number, direction: -1 | 1) {
+    if (!templates) return;
     const target = index + direction;
     if (target < 0 || target >= templates.length) return;
-    setTemplates((prev) => {
-      const next = [...prev];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  }
-
-  function addTemplate(newName: string) {
-    setTemplates((prev) => [
-      ...prev,
-      {
-        id: `tpl-preview-${prev.length}`,
-        user_id: prev[0]?.user_id ?? "00000000-0000-0000-0000-000000000001",
-        name: newName,
-        description: null,
-        position: (prev[prev.length - 1]?.position ?? 0) + 10,
-        archived_at: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      },
+    reorderTemplates.mutate([
+      { id: templates[index].id, position: templates[target].position },
+      { id: templates[target].id, position: templates[index].position },
     ]);
   }
 
+  function addTemplate(newName: string) {
+    createTemplate.mutate(newName);
+  }
+
   function archive(id: string) {
-    setTemplates((prev) => prev.filter((t) => t.id !== id));
+    archiveTemplate.mutate(id);
   }
 
   return (
@@ -81,7 +65,7 @@ export default function TemplatesPage() {
       )}
 
       <ul className="stagger space-y-2.5">
-        {templates.map((t, i) => {
+        {templates?.map((t, i) => {
           const isDeload = t.name.toLowerCase().includes("deload");
           return (
             <li
@@ -111,7 +95,7 @@ export default function TemplatesPage() {
                   </button>
                   <button
                     onClick={() => move(i, 1)}
-                    disabled={i === templates.length - 1}
+                    disabled={!templates || i === templates.length - 1}
                     className="text-xs text-muted transition-transform duration-150 hover:text-fg active:scale-90 disabled:opacity-30"
                     aria-label="Move down"
                   >

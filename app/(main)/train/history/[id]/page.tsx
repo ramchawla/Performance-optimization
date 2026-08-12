@@ -3,15 +3,31 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { formatWeightKg } from "@/lib/units";
-import { MOCK_HISTORY, MOCK_HISTORY_DETAILS } from "@/lib/mock/trainMock";
+import { useSessionDetail } from "@/lib/queries/sessions";
 
-// ponytail: rendering MOCK_HISTORY_DETAILS directly instead of
-// useSessionDetail(id) — no seed data locally, this is a visual preview.
-// Swap back to useSessionDetail(id) once workout sessions are seeded in the
-// real DB.
 export default function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const data = MOCK_HISTORY_DETAILS[id] ?? MOCK_HISTORY_DETAILS[MOCK_HISTORY[0].id];
+  const { data, isLoading } = useSessionDetail(id);
+
+  if (isLoading) {
+    return (
+      <main className="space-y-4 p-4">
+        <div className="h-6 w-24 animate-pulse rounded bg-surface-raised" />
+        <div className="h-40 animate-pulse rounded-2xl bg-surface-raised" />
+      </main>
+    );
+  }
+
+  if (!data) {
+    return (
+      <main className="space-y-4 p-4">
+        <Link href="/train/history" className="inline-block text-xs text-muted transition-colors hover:text-fg">
+          ← History
+        </Link>
+        <p className="text-sm text-muted">Session not found.</p>
+      </main>
+    );
+  }
 
   const { session, exercises } = data;
 
