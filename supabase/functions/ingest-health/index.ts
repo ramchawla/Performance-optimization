@@ -102,6 +102,7 @@ Deno.serve(async (req: Request) => {
   const metrics = payload?.data?.metrics ?? [];
   let skipped = 0;
   let upserted = 0;
+  const errors: string[] = [];
 
   for (const m of metrics) {
     const rule = METRIC_MAP[m.name];
@@ -120,7 +121,7 @@ Deno.serve(async (req: Request) => {
     const metricDate = attributedDate(m.date, timezone);
 
     if (rule.aggregation === "latest") {
-      await supabase.from("health_metrics").upsert(
+      const { error: upsertErr } = await supabase.from("health_metrics").upsert(
         {
           user_id: userId,
           metric_type: rule.ourType,
@@ -132,11 +133,15 @@ Deno.serve(async (req: Request) => {
         },
         { onConflict: "user_id,metric_type,metric_date,source" }
       );
+      if (upsertErr) {
+        errors.push(`${rule.ourType}@${metricDate}: ${upsertErr.message}`);
+        continue;
+      }
       upserted++;
     } else {
       // "larger" aggregation: only overwrite if the new value is bigger,
       // per §4's cumulative-metric rule.
-      const { data: existing } = await supabase
+      const { data: existing, error: selectErr } = await supabase
         .from("health_metrics")
         .select("value")
         .eq("user_id", userId)
@@ -145,8 +150,13 @@ Deno.serve(async (req: Request) => {
         .eq("source", "health_export")
         .maybeSingle();
 
+      if (selectErr) {
+        errors.push(`${rule.ourType}@${metricDate}: ${selectErr.message}`);
+        continue;
+      }
+
       if (!existing || value > existing.value) {
-        await supabase.from("health_metrics").upsert(
+        const { error: upsertErr } = await supabase.from("health_metrics").upsert(
           {
             user_id: userId,
             metric_type: rule.ourType,
@@ -158,12 +168,16 @@ Deno.serve(async (req: Request) => {
           },
           { onConflict: "user_id,metric_type,metric_date,source" }
         );
+        if (upsertErr) {
+          errors.push(`${rule.ourType}@${metricDate}: ${upsertErr.message}`);
+          continue;
+        }
       }
       upserted++;
     }
   }
 
-  return new Response(JSON.stringify({ ok: true, upserted, skipped }), {
+  return new Response(JSON.stringify({ ok: errors.length === 0, upserted, skipped, errors }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });

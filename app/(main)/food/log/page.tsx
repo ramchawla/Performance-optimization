@@ -1,18 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { FoodPicker } from "@/components/food/FoodPicker";
 import { LogEntryForm } from "@/components/food/LogEntryForm";
 import { CustomFoodForm } from "@/components/food/CustomFoodForm";
 import { MacroSummary } from "@/components/food/MacroSummary";
 import { FoodSubnav } from "@/components/food/FoodSubnav";
-import { sumDailyTotals } from "@/lib/calc/nutritionTotals";
-import { MOCK_FOODS, MOCK_LOG_ENTRIES, MOCK_NUTRITION_TARGETS } from "@/lib/mock/foodMock";
+import { createClient } from "@/lib/supabase/client";
+import { useDailyLog, useDailyTotals, useNutritionTargets, useDeleteNutritionLog } from "@/lib/queries/nutrition";
 import type { Food } from "@/lib/queries/foods";
 import type { Database } from "@/lib/database.types";
 
 type MealType = Database["public"]["Enums"]["meal_type"];
-type Entry = (typeof MOCK_LOG_ENTRIES)[number];
+type Entry = Database["public"]["Tables"]["nutrition_logs"]["Row"];
 
 const MEAL_ORDER: MealType[] = ["breakfast", "lunch", "dinner", "snack", "pre_workout", "post_workout"];
 
@@ -39,38 +40,25 @@ function shiftDate(date: string, days: number): string {
   return d.toLocaleDateString("en-CA");
 }
 
-// ponytail: rendering mock foodMock data directly instead of useDailyLog/
-// useDailyTotals/useNutritionTargets — same preview pass as the dashboard.
-// Swap back to those hooks (plus useDeleteNutritionLog for real deletes) once
-// there's real logged history to query. Deletes here only mutate local state.
 export default function FoodLogPage() {
   const [logDate, setLogDate] = useState(todayLocal);
   const [picking, setPicking] = useState<{ meal: MealType } | null>(null);
   const [selectedFood, setSelectedFood] = useState<Food | null>(null);
   const [creatingCustom, setCreatingCustom] = useState(false);
-  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
-  // Reversible-delete affordance (the kinetic mockup's confirm+undo motif,
-  // wired to a real reversible action rather than a fake "logged" toggle).
-  const [undo, setUndo] = useState<{ id: string; description: string } | null>(null);
+  // Reversible-delete affordance: the row is gone from the query result
+  // immediately (real delete), undo re-creates it via useLogFood-shaped insert.
+  const [undo, setUndo] = useState<{ entry: Entry } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const qc = useQueryClient();
+  const { data: entries } = useDailyLog(logDate);
+  const { data: totals } = useDailyTotals(logDate);
+  const { data: targets } = useNutritionTargets();
+  const deleteLog = useDeleteNutritionLog();
 
   useEffect(() => () => {
     if (undoTimer.current) clearTimeout(undoTimer.current);
   }, []);
-
-  const baseEntries = logDate === todayLocal() ? MOCK_LOG_ENTRIES : [];
-  const entries = baseEntries.filter((e) => !deletedIds.has(e.id));
-  const totals = sumDailyTotals(
-    entries.map((e) => ({
-      calories: e.calories,
-      proteinG: e.protein_g,
-      carbsG: e.carbs_g,
-      fatG: e.fat_g,
-      fiberG: e.fiber_g,
-      micros: (e.micros as Record<string, number>) ?? {},
-    }))
-  );
-  const targets = MOCK_NUTRITION_TARGETS;
 
   function closePicker() {
     setPicking(null);
@@ -79,19 +67,23 @@ export default function FoodLogPage() {
   }
 
   function removeEntry(entry: Entry) {
-    setDeletedIds((prev) => new Set(prev).add(entry.id));
-    setUndo({ id: entry.id, description: entry.description });
+    deleteLog.mutate({ id: entry.id, logDate });
+    setUndo({ entry });
     if (undoTimer.current) clearTimeout(undoTimer.current);
     undoTimer.current = setTimeout(() => setUndo(null), 4000);
   }
 
   function undoRemove() {
+    // ponytail: undo re-inserts the same row shape rather than a real
+    // "restore" mutation — good enough for the 4s window, add a dedicated
+    // restore hook if this needs to survive longer.
     if (!undo) return;
-    setDeletedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(undo.id);
-      return next;
-    });
+    const supabase = createClient();
+    const newId = crypto.randomUUID();
+    void supabase
+      .from("nutrition_logs")
+      .insert({ ...undo.entry, id: newId, client_id: newId })
+      .then(() => qc.invalidateQueries({ queryKey: ["nutrition-log", logDate] }));
     if (undoTimer.current) clearTimeout(undoTimer.current);
     setUndo(null);
   }
@@ -183,7 +175,7 @@ export default function FoodLogPage() {
                     <CustomFoodForm onCreated={(food) => setSelectedFood(food)} />
                   ) : (
                     <>
-                      <FoodPicker onSelect={setSelectedFood} foods={MOCK_FOODS} />
+                      <FoodPicker onSelect={setSelectedFood} />
                       <button onClick={() => setCreatingCustom(true)}
                         className="text-xs font-medium text-accent transition-colors duration-200 hover:text-fg">
                         Can&apos;t find it — add custom food
@@ -203,7 +195,7 @@ export default function FoodLogPage() {
 
       {undo && (
         <div className="animate-enter fixed bottom-24 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 rounded-full border border-accent/30 bg-surface-raised px-4 py-2 shadow-[0_0_20px_-6px_var(--accent)]">
-          <span className="text-xs text-fg">Removed {undo.description}</span>
+          <span className="text-xs text-fg">Removed {undo.entry.description}</span>
           <button onClick={undoRemove} className="font-mono text-xs font-semibold text-accent underline underline-offset-2">
             Undo
           </button>

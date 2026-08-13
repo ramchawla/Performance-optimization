@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useCreateRecipe, useLogRecipe, type RecipeWithItems } from "@/lib/queries/recipes";
+import { useCreateRecipe, useLogRecipe, useRecipes, type RecipeWithItems } from "@/lib/queries/recipes";
 import { FoodPicker } from "@/components/food/FoodPicker";
 import { FoodSubnav } from "@/components/food/FoodSubnav";
-import { MOCK_FOODS, MOCK_RECIPES } from "@/lib/mock/foodMock";
 import type { Food } from "@/lib/queries/foods";
 import type { Database } from "@/lib/database.types";
 
@@ -69,7 +68,7 @@ function RecipeBuilder({ onDone }: { onDone: () => void }) {
       )}
 
       {picking ? (
-        <FoodPicker foods={MOCK_FOODS} onSelect={(food) => { setItems((prev) => [...prev, { food, quantity: 1 }]); setPicking(false); }} />
+        <FoodPicker onSelect={(food) => { setItems((prev) => [...prev, { food, quantity: 1 }]); setPicking(false); }} />
       ) : (
         <button type="button" onClick={() => setPicking(true)}
           className="text-xs font-medium text-accent transition-colors duration-200 hover:text-fg">
@@ -159,12 +158,8 @@ function LogRecipeRow({ recipe }: { recipe: RecipeWithItems }) {
   );
 }
 
-// ponytail: recipes list rendered from MOCK_RECIPES instead of useRecipes() —
-// preview pass, same as the dashboard. Creating a new recipe / logging one to
-// today still go through the real useCreateRecipe/useLogRecipe mutations, so
-// they won't appear here until real recipe data exists to query.
 export default function RecipesPage() {
-  const recipes = MOCK_RECIPES;
+  const { data: recipes } = useRecipes();
   const [building, setBuilding] = useState(false);
 
   return (

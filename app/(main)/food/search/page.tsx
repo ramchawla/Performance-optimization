@@ -5,7 +5,6 @@ import { FoodPicker } from "@/components/food/FoodPicker";
 import { CustomFoodForm } from "@/components/food/CustomFoodForm";
 import { FoodSubnav } from "@/components/food/FoodSubnav";
 import { MICRO_VOCAB, type MicroKey } from "@/lib/nutrition";
-import { MOCK_FOODS } from "@/lib/mock/foodMock";
 import type { Food } from "@/lib/queries/foods";
 
 function StatPill({ n, l }: { n: string; l: string }) {
@@ -17,9 +16,6 @@ function StatPill({ n, l }: { n: string; l: string }) {
   );
 }
 
-// ponytail: FoodPicker fed MOCK_FOODS instead of the real Supabase-backed
-// search (useFoodSearch/useRecentFoods) — preview pass, same as the dashboard.
-// Drop the `foods` prop once there's real food data to search against.
 export default function FoodLibraryPage() {
   const [selected, setSelected] = useState<Food | null>(null);
   const [creating, setCreating] = useState(false);
@@ -37,7 +33,7 @@ export default function FoodLibraryPage() {
           <CustomFoodForm onCreated={(food) => { setSelected(food); setCreating(false); }} />
         ) : (
           <>
-            <FoodPicker onSelect={setSelected} foods={MOCK_FOODS} />
+            <FoodPicker onSelect={setSelected} />
             <button onClick={() => setCreating(true)}
               className="mt-2 text-xs font-medium text-accent transition-colors duration-200 hover:text-fg">
               + Add custom food

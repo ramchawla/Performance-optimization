@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Personal training, nutrition, sleep, and body-metrics tracker.",
     start_url: "/dashboard",
     display: "standalone",
-    background_color: "#171717",
-    theme_color: "#171717",
+    background_color: "#0a0b0d",
+    theme_color: "#0a0b0d",
     icons: [
       { src: "/icon1", sizes: "192x192", type: "image/png", purpose: "any" },
       { src: "/icon", sizes: "512x512", type: "image/png", purpose: "any" },
