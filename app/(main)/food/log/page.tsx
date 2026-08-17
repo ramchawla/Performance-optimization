@@ -8,6 +8,7 @@ import { CustomFoodForm } from "@/components/food/CustomFoodForm";
 import { MacroSummary } from "@/components/food/MacroSummary";
 import { FoodSubnav } from "@/components/food/FoodSubnav";
 import { createClient } from "@/lib/supabase/client";
+import { formatTime } from "@/lib/datetime";
 import { useDailyLog, useDailyTotals, useNutritionTargets, useDeleteNutritionLog } from "@/lib/queries/nutrition";
 import type { Food } from "@/lib/queries/foods";
 import type { Database } from "@/lib/database.types";
@@ -53,7 +54,7 @@ export default function FoodLogPage() {
   const qc = useQueryClient();
   const { data: entries } = useDailyLog(logDate);
   const { data: totals } = useDailyTotals(logDate);
-  const { data: targets } = useNutritionTargets();
+  const { data: targets } = useNutritionTargets(logDate);
   const deleteLog = useDeleteNutritionLog();
 
   useEffect(() => () => {
@@ -111,6 +112,9 @@ export default function FoodLogPage() {
       {totals && targets && (
         <div className="mt-3">
           <MacroSummary totals={totals} targets={targets} />
+          {targets.isTrainingDay && (
+            <p className="mt-1.5 text-center text-[11px] text-accent">Training-day targets</p>
+          )}
         </div>
       )}
 
@@ -155,7 +159,10 @@ export default function FoodLogPage() {
                 <ul className="mt-2 space-y-1">
                   {mealEntries.map((e) => (
                     <li key={e.id} className="flex items-center justify-between text-sm text-fg">
-                      <span>{e.description} <span className="text-xs text-muted">×{e.quantity}</span></span>
+                      <span className="min-w-0">
+                        <span className="mr-1.5 font-mono text-[11px] text-muted">{formatTime(e.logged_at)}</span>
+                        {e.description} <span className="text-xs text-muted">×{e.quantity}</span>
+                      </span>
                       <span className="flex items-center gap-2">
                         <span className="font-mono text-xs text-muted">{Math.round(e.calories)} kcal</span>
                         <button onClick={() => removeEntry(e)} aria-label={`Remove ${e.description}`}

@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { PhotoCompare } from "@/components/body/PhotoCompare";
-import type { ProgressPhotoSession } from "@/lib/mock/bodyMock";
-import { useBodyMetricsHistory, useLogBodyMetric, useProgressPhotos } from "@/lib/queries/body";
+import { PhotoUpload } from "@/components/body/PhotoUpload";
+import { groupPhotoSessions, useBodyMetricsHistory, useLogBodyMetric, useProgressPhotos } from "@/lib/queries/body";
 import { displayWeightKg, inputToKg } from "@/lib/units";
-
-const WEIGHT_UNIT = "lb" as const; // profile-driven unit selection is out of scope for Phase 1
+import { useUnits } from "@/lib/queries/units";
 
 // ponytail: fixed viewBox, so a static dash length (longer than any path this
 // data can produce) works for the draw-on animation without measuring the
@@ -26,20 +25,20 @@ function toPolylinePoints(values: number[], width: number, height: number, padY 
     .join(" ");
 }
 
-function WeightTrendChart({ points, deltaKg }: { points: number[]; deltaKg: number }) {
+function WeightTrendChart({ points, deltaKg, unit }: { points: number[]; deltaKg: number; unit: "kg" | "lb" }) {
   const width = 320;
   const height = 96;
   const line = toPolylinePoints(points, width, height);
   const last = line.split(" ").at(-1)!;
   const [lastX, lastY] = last.split(",").map(Number);
   const fillPolygon = `0,${height} ${line} ${width},${height}`;
-  const deltaDisplay = Math.round(displayWeightKg(deltaKg, WEIGHT_UNIT)! * 10) / 10;
+  const deltaDisplay = Math.round(displayWeightKg(deltaKg, unit)! * 10) / 10;
 
   return (
     <div className="rounded-2xl bg-surface p-4 pt-4 pb-3">
       <div className="mb-2.5 flex justify-between font-mono text-[10px] tracking-wide text-muted uppercase">
         <span>Trend</span>
-        <span>{deltaDisplay > 0 ? "+" : ""}{deltaDisplay} {WEIGHT_UNIT}</span>
+        <span>{deltaDisplay > 0 ? "+" : ""}{deltaDisplay} {unit}</span>
       </div>
       <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="block h-24 w-full overflow-visible">
         <defs>
@@ -77,8 +76,14 @@ function deltaLabel(deltaCm: number) {
 const inputCls =
   "w-full rounded-xl border border-surface-raised bg-bg px-3 py-2 font-mono text-[15px] text-fg transition-colors duration-150 focus-visible:border-accent focus-visible:outline-none";
 
+function todayLocal(): string {
+  return new Date().toLocaleDateString("en-CA");
+}
+
 function LogMetricForm({ onDone }: { onDone: () => void }) {
   const logMetric = useLogBodyMetric();
+  const { weight: weightUnit } = useUnits();
+  const [measuredOn, setMeasuredOn] = useState(todayLocal);
   const [weight, setWeight] = useState("");
   const [waist, setWaist] = useState("");
   const [neck, setNeck] = useState("");
@@ -88,7 +93,8 @@ function LogMetricForm({ onDone }: { onDone: () => void }) {
     e.preventDefault();
     logMetric.mutate(
       {
-        weightKg: weight ? inputToKg(Number(weight), WEIGHT_UNIT) : null,
+        measuredOn,
+        weightKg: weight ? inputToKg(Number(weight), weightUnit) : null,
         waistCm: waist ? Number(waist) : null,
         neckCm: neck ? Number(neck) : null,
         hipCm: hip ? Number(hip) : null,
@@ -100,9 +106,19 @@ function LogMetricForm({ onDone }: { onDone: () => void }) {
   return (
     <form onSubmit={handleSubmit} className="animate-enter space-y-2.5 rounded-2xl border border-surface-raised bg-surface p-3.5">
       <p className="font-display text-xs font-bold uppercase tracking-wide text-muted">Log weigh-in</p>
+      <label className="flex flex-col gap-1 text-xs text-muted">
+        Measured on
+        <input
+          type="date"
+          value={measuredOn}
+          max={todayLocal()}
+          onChange={(e) => setMeasuredOn(e.target.value)}
+          className={inputCls}
+        />
+      </label>
       <div className="grid grid-cols-2 gap-2">
         <label className="flex flex-col gap-1 text-xs text-muted">
-          Weight ({WEIGHT_UNIT})
+          Weight ({weightUnit})
           <input type="number" step="0.1" value={weight} onChange={(e) => setWeight(e.target.value)} className={inputCls} />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted">
@@ -135,7 +151,9 @@ function LogMetricForm({ onDone }: { onDone: () => void }) {
 }
 
 export default function Page() {
+  const { weight: weightUnit } = useUnits();
   const [logging, setLogging] = useState(false);
+  const [addingPhoto, setAddingPhoto] = useState(false);
   const { data: history } = useBodyMetricsHistory(90);
   const { data: photos } = useProgressPhotos();
 
@@ -160,21 +178,7 @@ export default function Page() {
 
   // progress_photos is one row per pose; group same-day rows into a "session"
   // for PhotoCompare, which compares session-to-session.
-  const sessions: ProgressPhotoSession[] = Object.values(
-    (photos ?? []).reduce<Record<string, ProgressPhotoSession>>((acc, p) => {
-      const date = p.taken_at.slice(0, 10);
-      if (!acc[date]) {
-        acc[date] = {
-          date,
-          label: new Date(`${date}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-          weightKgAtTime: p.weight_kg_at_time ?? 0,
-          poses: [],
-        };
-      }
-      if (p.pose !== "other") acc[date].poses.push(p.pose);
-      return acc;
-    }, {})
-  );
+  const sessions = groupPhotoSessions(photos ?? []);
 
   return (
     <main className="p-4 pb-8">
@@ -194,13 +198,13 @@ export default function Page() {
       )}
 
       <div className="flex items-baseline gap-2 font-display text-6xl font-bold tracking-tight text-fg">
-        {latest?.weight_kg ? Math.round(displayWeightKg(latest.weight_kg, WEIGHT_UNIT)! * 10) / 10 : "—"}
-        <span className="text-xl font-medium text-muted">{WEIGHT_UNIT}</span>
+        {latest?.weight_kg ? Math.round(displayWeightKg(latest.weight_kg, weightUnit)! * 10) / 10 : "—"}
+        <span className="text-xl font-medium text-muted">{weightUnit}</span>
       </div>
 
       {weightPoints.length > 1 && (
         <div className="mt-4">
-          <WeightTrendChart points={weightPoints} deltaKg={deltaKg} />
+          <WeightTrendChart points={weightPoints} deltaKg={deltaKg} unit={weightUnit} />
         </div>
       )}
 
@@ -220,14 +224,30 @@ export default function Page() {
         ))}
       </div>
 
-      {sessions.length > 1 && (
+      <div className="mt-6 mb-3 flex items-center justify-between font-display text-lg font-bold">
+        Photos
+        <button onClick={() => setAddingPhoto((v) => !v)} className="font-mono text-[11px] font-normal text-accent">
+          {addingPhoto ? "Cancel" : "+ Add photo"}
+        </button>
+      </div>
+
+      {addingPhoto && (
+        <div className="mb-3">
+          <PhotoUpload latestWeightKg={latest?.weight_kg ?? null} onDone={() => setAddingPhoto(false)} />
+        </div>
+      )}
+
+      {sessions.length > 1 ? (
         <>
-          <div className="mt-6 mb-3 flex items-center justify-between font-display text-lg font-bold">
-            Compare photos
-            <span className="font-mono text-[9.5px] font-normal tracking-wide text-muted uppercase">drag to scrub</span>
-          </div>
+          <div className="mb-2 text-right font-mono text-[9.5px] tracking-wide text-muted uppercase">drag to scrub</div>
           <PhotoCompare sessions={sessions} />
         </>
+      ) : (
+        <p className="text-xs text-muted">
+          {sessions.length === 1
+            ? "One session so far — add a photo on another day to compare."
+            : "No photos yet."}
+        </p>
       )}
     </main>
   );

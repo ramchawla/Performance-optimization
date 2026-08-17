@@ -1,15 +1,19 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { PhotoPose, ProgressPhotoSession } from "@/lib/mock/bodyMock";
+import type { PhotoPose, PhotoSession } from "@/lib/queries/body";
 
-const POSES: PhotoPose[] = ["front", "side", "back"];
+const POSES: PhotoPose[] = ["front", "side", "back", "other"];
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
 
-export function PhotoCompare({ sessions }: { sessions: ProgressPhotoSession[] }) {
+function weightLabel(kg: number | null): string {
+  return kg === null ? "—" : `${Math.round(kg * 10) / 10} kg`;
+}
+
+export function PhotoCompare({ sessions }: { sessions: PhotoSession[] }) {
   // sessions is newest-first; "before" is always the oldest session on file,
   // "after" defaults to the newest and is switchable via the month pills.
   const before = sessions[sessions.length - 1];
@@ -20,6 +24,10 @@ export function PhotoCompare({ sessions }: { sessions: ProgressPhotoSession[] })
   const dragging = useRef(false);
 
   const after = sessions[afterIndex];
+  const beforeUrl = before.urlByPose[pose];
+  const afterUrl = after.urlByPose[pose];
+  // Only offer poses that actually exist somewhere in the set.
+  const availablePoses = POSES.filter((p) => sessions.some((s) => s.urlByPose[p]));
 
   function setPosFromClientX(clientX: number) {
     const rect = stageRef.current?.getBoundingClientRect();
@@ -67,8 +75,18 @@ export function PhotoCompare({ sessions }: { sessions: ProgressPhotoSession[] })
       >
         {/* before layer, full */}
         <div className="absolute inset-0 flex items-end bg-gradient-to-br from-surface-raised via-bg to-bg p-2.5">
-          <span className="rounded bg-black/55 px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-fg">
+          {beforeUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- signed Storage URLs expire; next/image would cache them past their TTL
+            <img
+              src={beforeUrl}
+              alt={`${before.label}, ${pose} pose`}
+              className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover"
+              draggable={false}
+            />
+          )}
+          <span className="relative rounded bg-black/55 px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-fg">
             {before.label} · {pose}
+            {!beforeUrl && " · no photo"}
           </span>
         </div>
         {/* after layer, clipped from the left up to `pos` */}
@@ -76,8 +94,18 @@ export function PhotoCompare({ sessions }: { sessions: ProgressPhotoSession[] })
           className="absolute inset-0 flex items-end bg-gradient-to-br from-accent-dim/70 via-bg to-bg p-2.5"
           style={{ clipPath: `inset(0 0 0 ${pos}%)` }}
         >
-          <span className="rounded bg-black/55 px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-fg">
+          {afterUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- see above
+            <img
+              src={afterUrl}
+              alt={`${after.label}, ${pose} pose`}
+              className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover"
+              draggable={false}
+            />
+          )}
+          <span className="relative rounded bg-black/55 px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-fg">
             {after.label} · {pose}
+            {!afterUrl && " · no photo"}
           </span>
         </div>
         {/* handle */}
@@ -93,15 +121,15 @@ export function PhotoCompare({ sessions }: { sessions: ProgressPhotoSession[] })
 
       <div className="mt-2.5 flex justify-between font-mono text-[10.5px] text-muted">
         <span>
-          <strong className="text-fg">{before.label}</strong> · {before.weightKgAtTime} kg
+          <strong className="text-fg">{before.label}</strong> · {weightLabel(before.weightKgAtTime)}
         </span>
         <span>
-          <strong className="text-fg">{after.label}</strong> · {after.weightKgAtTime} kg
+          <strong className="text-fg">{after.label}</strong> · {weightLabel(after.weightKgAtTime)}
         </span>
       </div>
 
       <div className="mt-3.5 flex gap-1.5 overflow-x-auto pb-0.5">
-        {POSES.map((p) => (
+        {availablePoses.map((p) => (
           <button
             key={p}
             type="button"

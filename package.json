@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed:exercises": "tsx scripts/seed-exercises.ts",
-    "gen:types": "echo 'Run: npx supabase gen types typescript --project-id <your-ref> > lib/database.types.ts'"
+    "gen:types": "npx supabase gen types typescript --project-id knkgfdeygcecwkcjzthg > lib/database.types.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

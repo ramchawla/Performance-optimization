@@ -4,6 +4,7 @@ import { enqueue } from "@/lib/sync/outbox";
 import { useActiveSessionStore, type ActiveSessionExercise } from "@/stores/activeSession";
 import type { TemplateExerciseWithName } from "@/lib/queries/templates";
 import type { Database } from "@/lib/database.types";
+import { combineLocal } from "@/lib/datetime";
 
 type WorkoutSession = Database["public"]["Tables"]["workout_sessions"]["Row"];
 
@@ -313,6 +314,50 @@ export function useSessionDetail(sessionId: string) {
             })),
         })),
       };
+    },
+  });
+}
+
+export interface SessionTimesInput {
+  sessionId: string;
+  /** Local date + "HH:MM" the session actually started. */
+  date: string;
+  time: string;
+  /** Minutes it lasted; null leaves completed_at untouched. */
+  durationMin?: number | null;
+}
+
+/**
+ * Corrects when a session happened. A session stamps started_at the moment
+ * you tap start, which is wrong for anything logged after the fact — this is
+ * how a workout gets moved to the day it really happened, and how a forgotten
+ * "finish" gets a duration.
+ */
+export function useUpdateSessionTimes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: SessionTimesInput) => {
+      const supabase = createClient();
+      const startedAt = combineLocal(input.date, input.time);
+      const patch: Database["public"]["Tables"]["workout_sessions"]["Update"] = {
+        started_at: startedAt,
+        updated_at: new Date().toISOString(),
+      };
+      if (input.durationMin != null && input.durationMin > 0) {
+        patch.completed_at = new Date(
+          new Date(startedAt).getTime() + input.durationMin * 60_000
+        ).toISOString();
+      }
+      const { error } = await supabase.from("workout_sessions").update(patch).eq("id", input.sessionId);
+      if (error) throw error;
+    },
+    onSuccess: (_data, input) => {
+      qc.invalidateQueries({ queryKey: ["session", input.sessionId] });
+      qc.invalidateQueries({ queryKey: ["session-history"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      // Training-day nutrition targets key off whether a session exists that
+      // day, so moving a session can change them.
+      qc.invalidateQueries({ queryKey: ["profile", "nutrition-targets"] });
     },
   });
 }

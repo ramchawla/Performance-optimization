@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { formatWeightKg } from "@/lib/units";
-import { useSessionDetail } from "@/lib/queries/sessions";
+import { useSessionDetail, useUpdateSessionTimes } from "@/lib/queries/sessions";
+import { localDateOf, toTimeInput } from "@/lib/datetime";
+import { useState } from "react";
+import type { Database } from "@/lib/database.types";
 
 export default function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -43,9 +46,7 @@ export default function SessionDetailPage() {
           <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-[10px] font-bold text-black">Deload</span>
         )}
       </div>
-      <p className="font-mono text-xs text-muted">
-        {new Date(session.started_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-      </p>
+      <SessionTimeEditor session={session} />
 
       <div className="stagger space-y-3">
         {exercises.map((ex) => (
@@ -74,5 +75,72 @@ export default function SessionDetailPage() {
         ))}
       </div>
     </main>
+  );
+}
+
+/**
+ * A session stamps started_at when you tap start, which is wrong for anything
+ * logged after the fact. This is how a workout gets moved to the day and time
+ * it actually happened.
+ */
+function SessionTimeEditor({ session }: { session: Database["public"]["Tables"]["workout_sessions"]["Row"] }) {
+  const update = useUpdateSessionTimes();
+  const [editing, setEditing] = useState(false);
+  const [date, setDate] = useState(() => localDateOf(session.started_at));
+  const [time, setTime] = useState(() => toTimeInput(session.started_at));
+  const [durationMin, setDurationMin] = useState(() =>
+    session.completed_at
+      ? String(
+          Math.round(
+            (new Date(session.completed_at).getTime() - new Date(session.started_at).getTime()) / 60000
+          )
+        )
+      : ""
+  );
+
+  if (!editing) {
+    return (
+      <p className="font-mono text-xs text-muted">
+        {new Date(session.started_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+        <button onClick={() => setEditing(true)} className="ml-2 text-accent">
+          edit
+        </button>
+      </p>
+    );
+  }
+
+  const fieldCls =
+    "rounded-lg border border-surface-raised bg-bg px-2 py-1.5 font-mono text-xs text-fg focus-visible:border-accent focus-visible:outline-none";
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        update.mutate(
+          { sessionId: session.id, date, time, durationMin: durationMin ? Number(durationMin) : null },
+          { onSuccess: () => setEditing(false) }
+        );
+      }}
+      className="flex flex-wrap items-center gap-2"
+    >
+      <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Session date" className={fieldCls} />
+      <input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Start time" className={fieldCls} />
+      <input
+        type="number"
+        min="0"
+        value={durationMin}
+        onChange={(e) => setDurationMin(e.target.value)}
+        aria-label="Duration in minutes"
+        placeholder="min"
+        className={`${fieldCls} w-20 placeholder:text-muted`}
+      />
+      <button type="submit" disabled={update.isPending} className="text-xs font-semibold text-accent disabled:opacity-50">
+        {update.isPending ? "Saving…" : "Save"}
+      </button>
+      <button type="button" onClick={() => setEditing(false)} className="text-xs text-muted">
+        Cancel
+      </button>
+      {update.isError && <span className="text-xs text-red-400">Failed to save.</span>}
+    </form>
   );
 }

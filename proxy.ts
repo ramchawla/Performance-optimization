@@ -32,7 +32,11 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith("/sign-in");
+  // /reset-password is reached from an emailed recovery link. Supabase signs
+  // the user in as part of that flow, so it must NOT bounce them to /dashboard
+  // the way /sign-in does — they still have to set the new password.
+  const isRecoveryRoute = request.nextUrl.pathname.startsWith("/reset-password");
+  const isAuthRoute = request.nextUrl.pathname.startsWith("/sign-in") || isRecoveryRoute;
 
   // ponytail: local dev bypass, skip prod (NODE_ENV=production on build/deploy)
   if (process.env.NODE_ENV === "development") {
@@ -45,7 +49,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuthRoute) {
+  if (user && isAuthRoute && !isRecoveryRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

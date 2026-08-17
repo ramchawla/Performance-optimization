@@ -1,5 +1,6 @@
 "use client";
 
+import { TrainSubnav } from "@/components/train/TrainSubnav";
 import { useState } from "react";
 import Link from "next/link";
 import { useTemplates, useCreateTemplate, useArchiveTemplate, useReorderTemplates } from "@/lib/queries/templates";
@@ -30,7 +31,8 @@ export default function TemplatesPage() {
   }
 
   return (
-    <main className="space-y-4 p-4">
+    <main className="space-y-4 p-4 pb-24">
+      <TrainSubnav />
       <h1 className="font-display text-xl font-bold tracking-tight text-fg">Templates</h1>
 
       <form

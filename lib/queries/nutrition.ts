@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { enqueue } from "@/lib/sync/outbox";
 import { scaleServing, sumDailyTotals, type DailyTotals } from "@/lib/calc/nutritionTotals";
+import { combineLocal, todayLocal } from "@/lib/datetime";
 import type { Food } from "@/lib/queries/foods";
 import type { Database } from "@/lib/database.types";
 
@@ -13,6 +14,13 @@ export interface LogFoodInput {
   quantity: number;
   meal: MealType;
   logDate: string; // client-side, user's timezone — CLAUDE.md rule 5
+  /**
+   * Local "HH:MM" the food was actually eaten. Defaults to now, but must be
+   * settable: without it a meal backfilled two days later is stamped with the
+   * time you did the paperwork, which breaks meal spacing, fasting windows and
+   * pre/post-workout deltas.
+   */
+  time?: string;
 }
 
 /** Logs a food entry with macros snapshotted at write time (CLAUDE.md rule 2) — editing the food later never rewrites past logs. */
@@ -42,6 +50,13 @@ export function useLogFood() {
         client_id: clientId,
         user_id: userData.user.id,
         log_date: input.logDate,
+        logged_at: input.time
+          ? combineLocal(input.logDate, input.time)
+          : // Backfilling a past day with no time given: midday on that day
+            // beats now(), which would put the meal on the wrong date entirely.
+            input.logDate === todayLocal()
+            ? new Date().toISOString()
+            : combineLocal(input.logDate, "12:00"),
         meal: input.meal,
         food_id: input.food.id,
         description: input.food.brand ? `${input.food.name} (${input.food.brand})` : input.food.name,
@@ -112,28 +127,53 @@ export interface NutritionTargets {
   proteinG: number | null;
   carbsG: number | null;
   fatG: number | null;
+  isTrainingDay: boolean;
 }
 
-export function useNutritionTargets() {
+/**
+ * Targets for a given day, switching to the training-day set when a workout
+ * exists on that date and the overrides are filled in.
+ *
+ * "Trained" here means a session was *started*, not completed — targets have
+ * to apply while you're still mid-session. `daily_rollup.trained` requires
+ * `completed_at is not null`, so it's the wrong primitive for this.
+ */
+export function useNutritionTargets(logDate?: string) {
+  const date = logDate ?? new Date().toLocaleDateString("en-CA");
   return useQuery({
-    queryKey: ["profile", "nutrition-targets"],
+    queryKey: ["profile", "nutrition-targets", date],
     queryFn: async (): Promise<NutritionTargets> => {
       const supabase = createClient();
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       if (userErr || !userData.user) throw new Error("Not signed in");
 
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("target_calories, target_protein_g, target_carbs_g, target_fat_g")
-        .eq("user_id", userData.user.id)
-        .single();
+      const [{ data, error }, { count, error: sessionErr }] = await Promise.all([
+        supabase
+          .from("profiles")
+          .select(
+            "target_calories, target_protein_g, target_carbs_g, target_fat_g, target_calories_training_day, target_protein_training_day_g, target_carbs_training_day_g, target_fat_training_day_g"
+          )
+          .eq("user_id", userData.user.id)
+          .single(),
+        supabase
+          .from("workout_sessions")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userData.user.id)
+          .gte("started_at", `${date}T00:00:00`)
+          .lt("started_at", `${date}T23:59:59.999`),
+      ]);
       if (error) throw error;
+      if (sessionErr) throw sessionErr;
+
+      const trained = (count ?? 0) > 0;
+      const useTrainingSet = trained && data.target_calories_training_day !== null;
 
       return {
-        calories: data.target_calories,
-        proteinG: data.target_protein_g,
-        carbsG: data.target_carbs_g,
-        fatG: data.target_fat_g,
+        calories: useTrainingSet ? data.target_calories_training_day : data.target_calories,
+        proteinG: useTrainingSet ? data.target_protein_training_day_g : data.target_protein_g,
+        carbsG: useTrainingSet ? data.target_carbs_training_day_g : data.target_carbs_g,
+        fatG: useTrainingSet ? data.target_fat_training_day_g : data.target_fat_g,
+        isTrainingDay: trained,
       };
     },
   });

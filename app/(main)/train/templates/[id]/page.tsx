@@ -1,5 +1,6 @@
 "use client";
 
+import { useUnits } from "@/lib/queries/units";
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -16,7 +17,6 @@ import { useStartSession } from "@/lib/queries/sessions";
 import { ExercisePicker } from "@/components/train/ExercisePicker";
 import { displayWeightKg, inputToKg } from "@/lib/units";
 
-const WEIGHT_UNIT = "lb" as const; // profile-driven unit selection is out of scope for Phase 1
 
 type RenderGroup =
   | { type: "single"; exercise: TemplateExerciseWithName; index: number }
@@ -245,7 +245,8 @@ function ExerciseRow({
   onRemove: () => void;
   nested?: boolean;
 }) {
-  const displayWeight = displayWeightKg(exercise.target_weight_kg, WEIGHT_UNIT);
+  const { weight: weightUnit } = useUnits();
+  const displayWeight = displayWeightKg(exercise.target_weight_kg, weightUnit);
 
   const fieldClass =
     "rounded-lg border border-surface-raised bg-surface-raised px-2 py-1 font-mono tabular-nums text-fg focus:border-accent focus:outline-none";
@@ -295,12 +296,12 @@ function ExerciseRow({
           />
         </label>
         <label className="flex flex-col gap-0.5">
-          Weight ({WEIGHT_UNIT})
+          Weight ({weightUnit})
           <input
             type="number"
             defaultValue={displayWeight ?? ""}
             onBlur={(e) =>
-              onPatch({ target_weight_kg: e.target.value === "" ? null : inputToKg(Number(e.target.value), WEIGHT_UNIT) })
+              onPatch({ target_weight_kg: e.target.value === "" ? null : inputToKg(Number(e.target.value), weightUnit) })
             }
             className={fieldClass}
           />

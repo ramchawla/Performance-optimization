@@ -4,21 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
-  { href: "/food/log", label: "Log" },
-  { href: "/food/water", label: "Water" },
-  { href: "/food/supplements", label: "Supps" },
-  { href: "/food/search", label: "Library" },
-  { href: "/food/recipes", label: "Recipes" },
+  { href: "/train/templates", label: "Templates" },
+  { href: "/train/history", label: "History" },
+  { href: "/train/cardio", label: "Cardio" },
 ];
 
-/** Sub-tab pills for the food pages — everything that goes in the body lives
- * under this tab, so hydration and supplements sit alongside food. */
-export function FoodSubnav() {
+/** Sub-tab pills for the Train section, mirroring FoodSubnav. */
+export function TrainSubnav() {
   const pathname = usePathname();
   return (
-    <nav className="flex gap-1 rounded-2xl border border-surface-raised bg-surface p-1" aria-label="Food views">
+    <nav className="flex gap-1 rounded-2xl border border-surface-raised bg-surface p-1" aria-label="Train views">
       {TABS.map((tab) => {
-        const active = pathname === tab.href;
+        const active = pathname?.startsWith(tab.href);
         return (
           <Link
             key={tab.href}

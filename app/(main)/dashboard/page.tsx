@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { RecompTile } from "@/components/ui/RecompTile";
 import { RadialProgress } from "@/components/ui/RadialProgress";
 import { VitalCard } from "@/components/ui/VitalCard";
@@ -10,7 +11,11 @@ import { CorrelationCard } from "@/components/ui/CorrelationCard";
 import { WeightTrendChart } from "@/components/charts/WeightTrendChart";
 import { VolumeBarChart } from "@/components/charts/VolumeBarChart";
 import { useDashboard } from "@/lib/queries/dashboard";
-import { useLogManualSleep } from "@/lib/queries/healthMetrics";
+import { useUpsertSleepLog } from "@/lib/queries/sleep";
+import { useReadinessLog } from "@/lib/queries/readiness";
+import { useHydrationLog } from "@/lib/queries/hydration";
+import { summarizeHydration } from "@/lib/calc/hydration";
+import { todayLocal } from "@/lib/datetime";
 
 function trendFor(slope: number | null): "up" | "down" | "flat" {
   if (slope === null || Math.abs(slope) < 0.05) return "flat";
@@ -33,16 +38,25 @@ const BoltIcon = (
   </svg>
 );
 
+/**
+ * Hours-only fast path for the common morning. Anything richer — bed/wake
+ * times, stages, Apple's score breakdown — lives on /sleep.
+ */
 function SleepQuickAdd() {
-  const logSleep = useLogManualSleep();
+  const upsert = useUpsertSleepLog();
   const [open, setOpen] = useState(false);
   const [hours, setHours] = useState("7.5");
 
   if (!open) {
     return (
-      <button onClick={() => setOpen(true)} className="mt-1 block w-full text-center text-[10px] text-accent">
-        + Log sleep manually
-      </button>
+      <div className="mt-1 flex items-center justify-center gap-2">
+        <button onClick={() => setOpen(true)} className="text-[10px] text-accent">
+          + Log hours
+        </button>
+        <Link href="/sleep" className="text-[10px] text-muted hover:text-accent">
+          Full entry
+        </Link>
+      </div>
     );
   }
 
@@ -50,21 +64,97 @@ function SleepQuickAdd() {
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        logSleep.mutate(Number(hours), { onSuccess: () => setOpen(false) });
+        upsert.mutate(
+          {
+            logDate: new Date().toLocaleDateString("en-CA"),
+            bedtimeAt: null,
+            waketimeAt: null,
+            durationS: Math.round(Number(hours) * 3600),
+            remS: null,
+            deepS: null,
+            coreS: null,
+            scoreDisruptions: null,
+            scoreConsistency: null,
+            scoreDuration: null,
+            quality: null,
+            notes: null,
+          },
+          { onSuccess: () => setOpen(false) }
+        );
       }}
       className="mt-1 flex items-center justify-center gap-1.5"
     >
       <input
         type="number"
         step="0.25"
+        min="0"
+        aria-label="Hours slept"
         value={hours}
         onChange={(e) => setHours(e.target.value)}
         className="w-14 rounded-md border border-surface-raised bg-bg px-1.5 py-1 text-center font-mono text-xs text-fg"
       />
-      <button type="submit" disabled={logSleep.isPending} className="text-[10px] font-semibold text-accent">
+      <button type="submit" disabled={upsert.isPending} className="text-[10px] font-semibold text-accent">
         Save
       </button>
+      <Link href="/sleep" className="text-[10px] text-muted hover:text-accent">
+        More
+      </Link>
     </form>
+  );
+}
+
+/**
+ * The three things that need a prompt rather than a chart: today's check-in,
+ * water so far, and supplements. Each states its own status so a missing
+ * entry is visible rather than silently absent.
+ */
+function TodayStrip() {
+  const today = todayLocal();
+  const { data: readiness } = useReadinessLog(today);
+  const { data: drinks } = useHydrationLog(today);
+  const totals = summarizeHydration(drinks ?? []);
+
+  const items = [
+    {
+      href: "/readiness",
+      label: "Check-in",
+      value: readiness?.readiness_score != null ? `${readiness.readiness_score}/10` : "—",
+      done: !!readiness,
+    },
+    {
+      href: "/food/water",
+      label: "Water",
+      value: totals.waterEquivalentMl > 0 ? `${(totals.waterEquivalentMl / 1000).toFixed(1)}L` : "—",
+      done: totals.waterEquivalentMl > 0,
+    },
+    {
+      href: "/food/supplements",
+      label: "Supps",
+      value: "→",
+      done: false,
+    },
+  ];
+
+  return (
+    <section>
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Today</h2>
+      <div className="grid grid-cols-3 gap-2">
+        {items.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`rounded-2xl border bg-surface p-3 text-center transition-colors duration-200 hover:border-accent/40 ${
+              item.done ? "border-accent/40" : "border-surface-raised"
+            }`}
+          >
+            <div className={`font-display text-lg font-bold ${item.done ? "text-accent" : "text-fg"}`}>
+              {item.value}
+            </div>
+            <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted">{item.label}</div>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -164,6 +254,8 @@ export default function Page() {
           <VitalCard icon={BoltIcon} value={data.vitals.steps ? data.vitals.steps.toLocaleString() : "—"} label="Steps" trendLabel="today" favorable={false} />
         </div>
       </section>
+
+      <TodayStrip />
 
       <section>
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Nutrition today</h2>

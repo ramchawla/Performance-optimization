@@ -1,5 +1,6 @@
 "use client";
 
+import { TrainSubnav } from "@/components/train/TrainSubnav";
 import Link from "next/link";
 import { useSessionHistory } from "@/lib/queries/sessions";
 import { displayWeightKg } from "@/lib/units";
@@ -8,7 +9,8 @@ export default function HistoryPage() {
   const { data: sessions, isLoading } = useSessionHistory();
 
   return (
-    <main className="space-y-4 p-4">
+    <main className="space-y-4 p-4 pb-24">
+      <TrainSubnav />
       <h1 className="font-display text-xl font-bold tracking-tight text-fg">History</h1>
 
       {isLoading && (

@@ -239,6 +239,51 @@ export type Database = {
         }
         Relationships: []
       }
+      hydration_logs: {
+        Row: {
+          alcohol_units: number | null
+          caffeine_mg: number | null
+          consumed_at: string
+          context: string | null
+          drink_type: string
+          id: string
+          log_date: string
+          notes: string | null
+          sodium_mg: number | null
+          updated_at: string
+          user_id: string
+          volume_ml: number
+        }
+        Insert: {
+          alcohol_units?: number | null
+          caffeine_mg?: number | null
+          consumed_at?: string
+          context?: string | null
+          drink_type?: string
+          id?: string
+          log_date: string
+          notes?: string | null
+          sodium_mg?: number | null
+          updated_at?: string
+          user_id: string
+          volume_ml: number
+        }
+        Update: {
+          alcohol_units?: number | null
+          caffeine_mg?: number | null
+          consumed_at?: string
+          context?: string | null
+          drink_type?: string
+          id?: string
+          log_date?: string
+          notes?: string | null
+          sodium_mg?: number | null
+          updated_at?: string
+          user_id?: string
+          volume_ml?: number
+        }
+        Relationships: []
+      }
       integration_accounts: {
         Row: {
           access_token: string | null
@@ -497,6 +542,66 @@ export type Database = {
         }
         Relationships: []
       }
+      readiness_logs: {
+        Row: {
+          appetite: number | null
+          energy: number | null
+          id: string
+          illness: string | null
+          joint_stiffness: number | null
+          libido: number | null
+          log_date: string
+          logged_at: string
+          mental_clarity: number | null
+          mood: number | null
+          motivation: number | null
+          notes: string | null
+          readiness_score: number | null
+          soreness: number | null
+          stress: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          appetite?: number | null
+          energy?: number | null
+          id?: string
+          illness?: string | null
+          joint_stiffness?: number | null
+          libido?: number | null
+          log_date: string
+          logged_at?: string
+          mental_clarity?: number | null
+          mood?: number | null
+          motivation?: number | null
+          notes?: string | null
+          readiness_score?: number | null
+          soreness?: number | null
+          stress?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          appetite?: number | null
+          energy?: number | null
+          id?: string
+          illness?: string | null
+          joint_stiffness?: number | null
+          libido?: number | null
+          log_date?: string
+          logged_at?: string
+          mental_clarity?: number | null
+          mood?: number | null
+          motivation?: number | null
+          notes?: string | null
+          readiness_score?: number | null
+          soreness?: number | null
+          stress?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       recipe_items: {
         Row: {
           food_id: string
@@ -673,6 +778,60 @@ export type Database = {
           },
         ]
       }
+      sleep_logs: {
+        Row: {
+          bedtime_at: string | null
+          core_s: number | null
+          deep_s: number | null
+          duration_s: number | null
+          id: string
+          log_date: string
+          notes: string | null
+          quality: number | null
+          rem_s: number | null
+          score_consistency: number | null
+          score_disruptions: number | null
+          score_duration: number | null
+          updated_at: string
+          user_id: string
+          waketime_at: string | null
+        }
+        Insert: {
+          bedtime_at?: string | null
+          core_s?: number | null
+          deep_s?: number | null
+          duration_s?: number | null
+          id?: string
+          log_date: string
+          notes?: string | null
+          quality?: number | null
+          rem_s?: number | null
+          score_consistency?: number | null
+          score_disruptions?: number | null
+          score_duration?: number | null
+          updated_at?: string
+          user_id: string
+          waketime_at?: string | null
+        }
+        Update: {
+          bedtime_at?: string | null
+          core_s?: number | null
+          deep_s?: number | null
+          duration_s?: number | null
+          id?: string
+          log_date?: string
+          notes?: string | null
+          quality?: number | null
+          rem_s?: number | null
+          score_consistency?: number | null
+          score_disruptions?: number | null
+          score_duration?: number | null
+          updated_at?: string
+          user_id?: string
+          waketime_at?: string | null
+        }
+        Relationships: []
+      }
       soreness_logs: {
         Row: {
           client_id: string
@@ -716,6 +875,116 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      supplement_intakes: {
+        Row: {
+          dose_amount: number | null
+          dose_unit: string | null
+          id: string
+          log_date: string
+          notes: string | null
+          skip_reason: string | null
+          skipped: boolean
+          supplement_id: string
+          taken_at: string
+          updated_at: string
+          user_id: string
+          with_food: boolean | null
+        }
+        Insert: {
+          dose_amount?: number | null
+          dose_unit?: string | null
+          id?: string
+          log_date: string
+          notes?: string | null
+          skip_reason?: string | null
+          skipped?: boolean
+          supplement_id: string
+          taken_at?: string
+          updated_at?: string
+          user_id: string
+          with_food?: boolean | null
+        }
+        Update: {
+          dose_amount?: number | null
+          dose_unit?: string | null
+          id?: string
+          log_date?: string
+          notes?: string | null
+          skip_reason?: string | null
+          skipped?: boolean
+          supplement_id?: string
+          taken_at?: string
+          updated_at?: string
+          user_id?: string
+          with_food?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplement_intakes_supplement_id_fkey"
+            columns: ["supplement_id"]
+            isOneToOne: false
+            referencedRelation: "supplements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplements: {
+        Row: {
+          active: boolean
+          brand: string | null
+          cost_per_serving: number | null
+          created_at: string
+          dose_amount: number | null
+          dose_unit: string | null
+          ended_on: string | null
+          form: string | null
+          id: string
+          name: string
+          notes: string | null
+          purpose: string | null
+          started_on: string | null
+          timing_rule: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          brand?: string | null
+          cost_per_serving?: number | null
+          created_at?: string
+          dose_amount?: number | null
+          dose_unit?: string | null
+          ended_on?: string | null
+          form?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          purpose?: string | null
+          started_on?: string | null
+          timing_rule?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          brand?: string | null
+          cost_per_serving?: number | null
+          created_at?: string
+          dose_amount?: number | null
+          dose_unit?: string | null
+          ended_on?: string | null
+          form?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          purpose?: string | null
+          started_on?: string | null
+          timing_rule?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       template_exercises: {
         Row: {
@@ -864,6 +1133,7 @@ export type Database = {
     Views: {
       daily_rollup: {
         Row: {
+          caffeine_mg: number | null
           calories: number | null
           carbs_g: number | null
           cardio_m: number | null
@@ -872,11 +1142,13 @@ export type Database = {
           hrv_ms: number | null
           mobility_done: boolean | null
           protein_g: number | null
+          readiness_score: number | null
           resting_hr: number | null
           sleep_s: number | null
           steps: number | null
           trained: boolean | null
           user_id: string | null
+          water_ml: number | null
           weight_kg: number | null
         }
         Relationships: []

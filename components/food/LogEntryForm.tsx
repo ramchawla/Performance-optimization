@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useLogFood } from "@/lib/queries/nutrition";
+import { nowTimeInput, todayLocal } from "@/lib/datetime";
 import type { Food } from "@/lib/queries/foods";
 import type { Database } from "@/lib/database.types";
 
@@ -24,6 +25,9 @@ export function LogEntryForm({
   const logFood = useLogFood();
   const [quantity, setQuantity] = useState("1");
   const [meal, setMeal] = useState<MealType>(defaultMeal);
+  // Defaults to now for today, midday for a backfilled day — either way the
+  // time is explicit rather than "whenever the paperwork happened".
+  const [time, setTime] = useState(() => (logDate === todayLocal() ? nowTimeInput() : "12:00"));
   // Pop-confirm before collapsing: reuses .animate-spring-pop (train-tab
   // motion) so a successful log gets the same delightful "logged" beat as a
   // completed set, then hands off to the parent's close/refresh.
@@ -31,7 +35,7 @@ export function LogEntryForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    await logFood.mutateAsync({ food, quantity: Number(quantity) || 1, meal, logDate });
+    await logFood.mutateAsync({ food, quantity: Number(quantity) || 1, meal, logDate, time });
     setJustLogged(true);
     window.setTimeout(onLogged, 650);
   }
@@ -57,6 +61,11 @@ export function LogEntryForm({
             <option key={m} value={m}>{m.replace("_", " ")}</option>
           ))}
         </select>
+        <label className="flex items-center gap-1 text-sm text-fg">
+          <span className="sr-only">Time eaten</span>
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Time eaten"
+            className="rounded-xl border border-surface-raised bg-bg px-2 py-1.5 font-mono text-sm text-fg focus:border-accent focus:outline-none" />
+        </label>
       </div>
       <div className="flex gap-2">
         <button type="submit" disabled={logFood.isPending || justLogged}

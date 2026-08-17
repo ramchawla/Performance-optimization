@@ -5,14 +5,17 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile, useUpdateProfile } from "@/lib/queries/settings";
 import { count as outboxCount } from "@/lib/sync/outbox";
+import { kcalFromMacros, scaleMacrosToKcal, type Macros } from "@/lib/calc/macros";
+import { displayWeightKg, inputToKg } from "@/lib/units";
+import type { WeightUnit } from "@/lib/queries/units";
+import {
+  useHealthExportStatus,
+  useStravaConnect,
+  useStravaDisconnect,
+  useStravaStatus,
+  useStravaSync,
+} from "@/lib/queries/integrations";
 import { useQuery } from "@tanstack/react-query";
-
-type IntegrationDef = { id: "strava" | "health_export"; name: string; description: string; initials: string };
-
-const INTEGRATIONS: IntegrationDef[] = [
-  { id: "strava", name: "Strava", description: "Auto-imports runs and rides", initials: "S" },
-  { id: "health_export", name: "Apple Health", description: "Sleep, weight, steps", initials: "A" },
-];
 
 // Kinetic direction: same tokens as the rest of the app, motion carries the
 // personality. Spring overshoot for the toggle thumb, a smooth ease for
@@ -20,6 +23,72 @@ const INTEGRATIONS: IntegrationDef[] = [
 // values — no keyframes needed for transition-based motion.
 const EASE_SPRING = "ease-[cubic-bezier(0.34,1.56,0.64,1)]";
 const EASE_SMOOTH = "ease-[cubic-bezier(0.16,1,0.3,1)]";
+
+const MACRO_FIELDS: { key: keyof Macros; label: string }[] = [
+  { key: "proteinG", label: "Protein" },
+  { key: "carbsG", label: "Carbs" },
+  { key: "fatG", label: "Fat" },
+];
+
+/**
+ * Calories and macros are one number expressed two ways. Typing a macro
+ * re-derives calories; typing calories rescales the macros proportionally.
+ * There is deliberately no way to save a split that doesn't add up.
+ */
+function TargetFields({
+  idPrefix,
+  label,
+  value,
+  onMacroChange,
+  onKcalChange,
+}: {
+  idPrefix: string;
+  label: string;
+  value: Macros;
+  onMacroChange: (key: keyof Macros, value: number) => void;
+  onKcalChange: (kcal: number) => void;
+}) {
+  const kcal = kcalFromMacros(value);
+  return (
+    <div>
+      <p className="mb-2 font-display text-[11px] font-bold uppercase tracking-wide text-muted">{label}</p>
+      <label htmlFor={`${idPrefix}-kcal`} className="mb-1.5 block text-[11px] uppercase tracking-wide text-muted">
+        Calories
+      </label>
+      <input
+        id={`${idPrefix}-kcal`}
+        type="number"
+        inputMode="numeric"
+        value={kcal}
+        onChange={(e) => onKcalChange(Number(e.target.value))}
+        className="w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 font-mono text-[15px] text-fg transition-colors duration-150 focus-visible:border-accent focus-visible:outline-none"
+      />
+      <div className="mt-3.5 grid grid-cols-3 gap-2">
+        {MACRO_FIELDS.map((field) => (
+          <div key={field.key}>
+            <label
+              htmlFor={`${idPrefix}-${field.key}`}
+              className="mb-1.5 block text-[11px] uppercase tracking-wide text-muted"
+            >
+              {field.label}
+            </label>
+            <input
+              id={`${idPrefix}-${field.key}`}
+              type="number"
+              inputMode="numeric"
+              value={value[field.key]}
+              onChange={(e) => onMacroChange(field.key, Number(e.target.value))}
+              className="w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 font-mono text-[15px] text-fg transition-colors duration-150 focus-visible:border-accent focus-visible:outline-none"
+            />
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-[11px] text-muted">
+        {value.proteinG}p × 4 + {value.carbsG}c × 4 + {value.fatG}f × 9 = {kcal} kcal
+      </p>
+    </div>
+  );
+}
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -61,39 +130,68 @@ export default function Page() {
     refetchInterval: 5000,
   });
 
-  const [draft, setDraft] = useState({ kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 });
+  const [draft, setDraft] = useState<{ rest: Macros; training: Macros | null }>({
+    rest: { proteinG: 0, carbsG: 0, fatG: 0 },
+    training: null,
+  });
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [wifiOnly, setWifiOnly] = useState(
-    () => typeof window !== "undefined" && window.localStorage.getItem("perfhub:wifiOnly") === "true"
-  );
-
-  function toggleWifiOnly() {
-    setWifiOnly((v) => {
-      const next = !v;
-      window.localStorage.setItem("perfhub:wifiOnly", String(next));
-      return next;
-    });
-  }
 
   function openEdit() {
     if (!profile) return;
     setDraft({
-      kcal: profile.target_calories ?? 0,
-      proteinG: profile.target_protein_g ?? 0,
-      carbsG: profile.target_carbs_g ?? 0,
-      fatG: profile.target_fat_g ?? 0,
+      rest: {
+        proteinG: profile.target_protein_g ?? 0,
+        carbsG: profile.target_carbs_g ?? 0,
+        fatG: profile.target_fat_g ?? 0,
+      },
+      training:
+        profile.target_calories_training_day === null
+          ? null
+          : {
+              proteinG: profile.target_protein_training_day_g ?? 0,
+              carbsG: profile.target_carbs_training_day_g ?? 0,
+              fatG: profile.target_fat_training_day_g ?? 0,
+            },
     });
     setEditing(true);
+  }
+
+  /** Editing a macro re-derives calories; the two can never drift apart. */
+  function setMacro(which: "rest" | "training", key: keyof Macros, value: number) {
+    setDraft((d) => {
+      const current = which === "rest" ? d.rest : d.training;
+      if (!current) return d;
+      return { ...d, [which]: { ...current, [key]: Math.max(0, value) } };
+    });
+  }
+
+  /** Editing calories rescales the split, holding each macro's share constant. */
+  function setKcal(which: "rest" | "training", kcal: number) {
+    setDraft((d) => {
+      const current = which === "rest" ? d.rest : d.training;
+      if (!current) return d;
+      const scaled = scaleMacrosToKcal(current, kcal);
+      return scaled ? { ...d, [which]: scaled } : d;
+    });
+  }
+
+  function toggleTrainingDay() {
+    // Seed the training set from the rest-day one — it's always a delta off it.
+    setDraft((d) => ({ ...d, training: d.training ? null : { ...d.rest } }));
   }
 
   function handleSave() {
     updateProfile.mutate(
       {
-        target_calories: draft.kcal,
-        target_protein_g: draft.proteinG,
-        target_carbs_g: draft.carbsG,
-        target_fat_g: draft.fatG,
+        target_calories: kcalFromMacros(draft.rest),
+        target_protein_g: draft.rest.proteinG,
+        target_carbs_g: draft.rest.carbsG,
+        target_fat_g: draft.rest.fatG,
+        target_calories_training_day: draft.training ? kcalFromMacros(draft.training) : null,
+        target_protein_training_day_g: draft.training?.proteinG ?? null,
+        target_carbs_training_day_g: draft.training?.carbsG ?? null,
+        target_fat_training_day_g: draft.training?.fatG ?? null,
       },
       {
         onSuccess: () => {
@@ -133,17 +231,8 @@ export default function Page() {
 
       <section>
         <SectionLabel>Profile</SectionLabel>
-        <div className="overflow-hidden rounded-2xl border border-surface-raised bg-surface">
-          <div className="flex items-center justify-between border-b border-surface-raised px-4 py-3.5">
-            <span className="text-sm font-medium text-fg">Name</span>
-            <span className="font-mono text-sm text-fg/80">{profile.display_name ?? "—"}</span>
-          </div>
-          <div className="flex items-center justify-between px-4 py-3.5">
-            <span className="text-sm font-medium text-fg">Units</span>
-            <span className="font-mono text-sm text-fg/80">
-              {profile.unit_weight === "lb" ? "Imperial (lb)" : "Metric (kg)"}
-            </span>
-          </div>
+        <div className="rounded-2xl border border-surface-raised bg-surface p-4">
+          <ProfileForm profile={profile} />
         </div>
       </section>
 
@@ -197,60 +286,33 @@ export default function Page() {
             }`}
           >
             <div className="overflow-hidden">
-              <div>
-                <label htmlFor="kcal-in" className="mb-1.5 block text-[11px] uppercase tracking-wide text-muted">
-                  Calories
-                </label>
-                <input
-                  id="kcal-in"
-                  type="number"
-                  inputMode="numeric"
-                  value={draft.kcal}
-                  onChange={(e) => setDraft((d) => ({ ...d, kcal: Number(e.target.value) }))}
-                  className="w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 font-mono text-[15px] text-fg transition-colors duration-150 focus-visible:border-accent focus-visible:outline-none"
-                />
+              <TargetFields
+                idPrefix="rest"
+                label="Rest day"
+                value={draft.rest}
+                onMacroChange={(k, v) => setMacro("rest", k, v)}
+                onKcalChange={(v) => setKcal("rest", v)}
+              />
+
+              <div className="mt-5 flex items-center justify-between border-t border-surface-raised pt-4">
+                <div>
+                  <span className="text-sm font-medium text-fg">Separate training-day targets</span>
+                  <div className="mt-0.5 text-xs text-muted">Applied on any day with a logged workout</div>
+                </div>
+                <Toggle on={draft.training !== null} onToggle={toggleTrainingDay} label="Separate training-day targets" />
               </div>
-              <div className="mt-3.5 grid grid-cols-3 gap-2">
-                <div>
-                  <label htmlFor="p-in" className="mb-1.5 block text-[11px] uppercase tracking-wide text-muted">
-                    Protein
-                  </label>
-                  <input
-                    id="p-in"
-                    type="number"
-                    inputMode="numeric"
-                    value={draft.proteinG}
-                    onChange={(e) => setDraft((d) => ({ ...d, proteinG: Number(e.target.value) }))}
-                    className="w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 font-mono text-[15px] text-fg transition-colors duration-150 focus-visible:border-accent focus-visible:outline-none"
+
+              {draft.training && (
+                <div className="mt-4">
+                  <TargetFields
+                    idPrefix="training"
+                    label="Training day"
+                    value={draft.training}
+                    onMacroChange={(k, v) => setMacro("training", k, v)}
+                    onKcalChange={(v) => setKcal("training", v)}
                   />
                 </div>
-                <div>
-                  <label htmlFor="c-in" className="mb-1.5 block text-[11px] uppercase tracking-wide text-muted">
-                    Carbs
-                  </label>
-                  <input
-                    id="c-in"
-                    type="number"
-                    inputMode="numeric"
-                    value={draft.carbsG}
-                    onChange={(e) => setDraft((d) => ({ ...d, carbsG: Number(e.target.value) }))}
-                    className="w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 font-mono text-[15px] text-fg transition-colors duration-150 focus-visible:border-accent focus-visible:outline-none"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="f-in" className="mb-1.5 block text-[11px] uppercase tracking-wide text-muted">
-                    Fat
-                  </label>
-                  <input
-                    id="f-in"
-                    type="number"
-                    inputMode="numeric"
-                    value={draft.fatG}
-                    onChange={(e) => setDraft((d) => ({ ...d, fatG: Number(e.target.value) }))}
-                    className="w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 font-mono text-[15px] text-fg transition-colors duration-150 focus-visible:border-accent focus-visible:outline-none"
-                  />
-                </div>
-              </div>
+              )}
 
               {/* Save button: label morphs into a checkmark via cross-fade, not a route/dialog change */}
               <button
@@ -287,20 +349,25 @@ export default function Page() {
       <section>
         <SectionLabel>Sync</SectionLabel>
         <div className="overflow-hidden rounded-2xl border border-surface-raised bg-surface">
-          <div className="flex items-center justify-between border-b border-surface-raised px-4 py-3.5">
+          {/* Anything logged offline queues locally first; this is that queue's depth. */}
+          <div className="flex items-center justify-between px-4 py-3.5">
             <div className="flex items-center">
               <span className="relative mr-2 inline-block h-[7px] w-[7px] rounded-full bg-accent">
-                <span className="animate-sync-ping absolute -inset-1 rounded-full border border-accent" />
+                {pending !== undefined && pending > 0 && (
+                  <span className="animate-sync-ping absolute -inset-1 rounded-full border border-accent" />
+                )}
               </span>
               <div>
-                <span className="text-sm font-medium text-fg">{pending && pending > 0 ? "Syncing" : "Synced"}</span>
-                <div className="mt-0.5 text-xs text-muted">Outbox: {pending ?? 0} pending</div>
+                <span className="text-sm font-medium text-fg">
+                  {pending && pending > 0 ? `Uploading ${pending} change${pending === 1 ? "" : "s"}` : "All changes saved"}
+                </span>
+                <div className="mt-0.5 text-xs text-muted">
+                  {pending && pending > 0
+                    ? "Logged on this device, not yet in the cloud"
+                    : "Nothing waiting to upload"}
+                </div>
               </div>
             </div>
-          </div>
-          <div className="flex items-center justify-between px-4 py-3.5">
-            <span className="text-sm font-medium text-fg">Sync on Wi-Fi only</span>
-            <Toggle on={wifiOnly} onToggle={toggleWifiOnly} label="Sync on Wi-Fi only" />
           </div>
         </div>
       </section>
@@ -308,13 +375,15 @@ export default function Page() {
       <section>
         <SectionLabel>Integrations</SectionLabel>
         <div className="overflow-hidden rounded-2xl border border-surface-raised bg-surface">
-          {INTEGRATIONS.map((integration, i) => (
-            <IntegrationRow
-              key={integration.id}
-              integration={integration}
-              isLast={i === INTEGRATIONS.length - 1}
-            />
-          ))}
+          <StravaRow />
+          <AppleHealthRow />
+        </div>
+      </section>
+
+      <section>
+        <SectionLabel>Account</SectionLabel>
+        <div className="overflow-hidden rounded-2xl border border-surface-raised bg-surface p-4">
+          <ChangePasswordForm />
         </div>
       </section>
 
@@ -331,39 +400,355 @@ export default function Page() {
   );
 }
 
-function IntegrationRow({ integration, isLast }: { integration: IntegrationDef; isLast: boolean }) {
-  const { data: connected } = useQuery({
-    queryKey: ["integration-account", integration.id],
-    queryFn: async () => {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("integration_accounts")
-        .select("id")
-        .eq("provider", integration.id)
-        .maybeSingle();
-      return !!data;
-    },
-  });
+const PROFILE_FIELD =
+  "w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 font-mono text-[15px] text-fg focus-visible:border-accent focus-visible:outline-none";
+const PROFILE_LABEL = "mb-1 block text-[11px] uppercase tracking-wide text-muted";
+
+/**
+ * Height, birth date and sex aren't vanity fields — Navy body fat, BMR and
+ * FFMI are all uncomputable without them. Goals are what turn a trend line
+ * into "on track" or "not".
+ */
+function ProfileForm({ profile }: { profile: NonNullable<ReturnType<typeof useProfile>["data"]> }) {
+  const updateProfile = useUpdateProfile();
+  const weightUnit: WeightUnit = profile.unit_weight === "kg" ? "kg" : "lb";
+
+  const [draft, setDraft] = useState(() => ({
+    displayName: profile.display_name ?? "",
+    unitWeight: weightUnit,
+    unitDistance: profile.unit_distance === "km" ? "km" : "mi",
+    heightCm: profile.height_cm === null ? "" : String(profile.height_cm),
+    birthDate: profile.birth_date ?? "",
+    sex: profile.sex ?? "",
+    goalWeight:
+      profile.goal_weight_kg === null
+        ? ""
+        : String(Math.round(displayWeightKg(profile.goal_weight_kg, weightUnit)! * 10) / 10),
+    goalBodyFat: profile.goal_body_fat_pct === null ? "" : String(profile.goal_body_fat_pct),
+  }));
+  const [saved, setSaved] = useState(false);
+
+  function set<K extends keyof typeof draft>(key: K, value: (typeof draft)[K]) {
+    setDraft((d) => ({ ...d, [key]: value }));
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    updateProfile.mutate(
+      {
+        display_name: draft.displayName.trim() || null,
+        unit_weight: draft.unitWeight,
+        unit_distance: draft.unitDistance,
+        height_cm: draft.heightCm ? Number(draft.heightCm) : null,
+        birth_date: draft.birthDate || null,
+        sex: draft.sex || null,
+        // Goal weight is typed in display units and stored in kg (rule 1).
+        goal_weight_kg: draft.goalWeight ? inputToKg(Number(draft.goalWeight), draft.unitWeight) : null,
+        goal_body_fat_pct: draft.goalBodyFat ? Number(draft.goalBodyFat) : null,
+      },
+      {
+        onSuccess: () => {
+          setSaved(true);
+          setTimeout(() => setSaved(false), 1200);
+        },
+      }
+    );
+  }
 
   return (
-    <div className={`flex items-center justify-between px-4 py-3.5 ${isLast ? "" : "border-b border-surface-raised"}`}>
-      <div className="flex items-center gap-2.5">
-        <div
-          className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] text-sm font-bold transition-colors duration-300 ${
-            connected ? "bg-accent/10 text-accent" : "bg-bg text-muted"
-          }`}
-        >
-          {integration.initials}
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div>
+        <label htmlFor="p-name" className={PROFILE_LABEL}>
+          Name
+        </label>
+        <input
+          id="p-name"
+          value={draft.displayName}
+          onChange={(e) => set("displayName", e.target.value)}
+          className={PROFILE_FIELD}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label htmlFor="p-uw" className={PROFILE_LABEL}>
+            Weight units
+          </label>
+          <select
+            id="p-uw"
+            value={draft.unitWeight}
+            onChange={(e) => set("unitWeight", e.target.value as WeightUnit)}
+            className={PROFILE_FIELD}
+          >
+            <option value="lb">Pounds (lb)</option>
+            <option value="kg">Kilograms (kg)</option>
+          </select>
         </div>
         <div>
-          <div className="text-sm font-medium text-fg">{integration.name}</div>
-          <div className={`mt-0.5 text-xs transition-colors duration-200 ${connected ? "text-accent" : "text-muted"}`}>
-            {connected ? "Connected" : "Not connected"}
-          </div>
+          <label htmlFor="p-ud" className={PROFILE_LABEL}>
+            Distance units
+          </label>
+          <select
+            id="p-ud"
+            value={draft.unitDistance}
+            onChange={(e) => set("unitDistance", e.target.value)}
+            className={PROFILE_FIELD}
+          >
+            <option value="mi">Miles</option>
+            <option value="km">Kilometres</option>
+          </select>
         </div>
       </div>
-      {/* ponytail: connect/disconnect flows aren't built (Strava OAuth is a Phase-4 stub;
-          Apple Health is provisioned via direct SQL, not a UI flow) — status is read-only for now. */}
+
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label htmlFor="p-height" className={PROFILE_LABEL}>
+            Height (cm)
+          </label>
+          <input
+            id="p-height"
+            type="number"
+            inputMode="numeric"
+            value={draft.heightCm}
+            onChange={(e) => set("heightCm", e.target.value)}
+            className={PROFILE_FIELD}
+          />
+        </div>
+        <div>
+          <label htmlFor="p-dob" className={PROFILE_LABEL}>
+            Born
+          </label>
+          <input
+            id="p-dob"
+            type="date"
+            value={draft.birthDate}
+            onChange={(e) => set("birthDate", e.target.value)}
+            className={PROFILE_FIELD}
+          />
+        </div>
+        <div>
+          <label htmlFor="p-sex" className={PROFILE_LABEL}>
+            Sex
+          </label>
+          <select id="p-sex" value={draft.sex} onChange={(e) => set("sex", e.target.value)} className={PROFILE_FIELD}>
+            <option value="">—</option>
+            <option value="male">Male</option>
+            <option value="female">Female</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label htmlFor="p-goalw" className={PROFILE_LABEL}>
+            Goal weight ({draft.unitWeight})
+          </label>
+          <input
+            id="p-goalw"
+            type="number"
+            step="0.1"
+            inputMode="decimal"
+            value={draft.goalWeight}
+            onChange={(e) => set("goalWeight", e.target.value)}
+            className={PROFILE_FIELD}
+          />
+        </div>
+        <div>
+          <label htmlFor="p-goalbf" className={PROFILE_LABEL}>
+            Goal body fat (%)
+          </label>
+          <input
+            id="p-goalbf"
+            type="number"
+            step="0.1"
+            inputMode="decimal"
+            value={draft.goalBodyFat}
+            onChange={(e) => set("goalBodyFat", e.target.value)}
+            className={PROFILE_FIELD}
+          />
+        </div>
+      </div>
+
+      <button
+        type="submit"
+        disabled={updateProfile.isPending}
+        className="min-h-11 w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-bg transition-transform duration-200 active:scale-[0.98] disabled:opacity-50"
+      >
+        {updateProfile.isPending ? "Saving…" : saved ? "Saved ✓" : "Save profile"}
+      </button>
+      {updateProfile.isError && <p className="text-center text-xs text-red-400">Failed to save — try again.</p>}
+    </form>
+  );
+}
+
+function IntegrationShell({
+  initials,
+  name,
+  status,
+  connected,
+  isLast,
+  children,
+}: {
+  initials: string;
+  name: string;
+  status: string;
+  connected: boolean;
+  isLast?: boolean;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className={`px-4 py-3.5 ${isLast ? "" : "border-b border-surface-raised"}`}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div
+            className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] text-sm font-bold transition-colors duration-300 ${
+              connected ? "bg-accent/10 text-accent" : "bg-bg text-muted"
+            }`}
+          >
+            {initials}
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-fg">{name}</div>
+            <div className={`mt-0.5 text-xs ${connected ? "text-accent" : "text-muted"}`}>{status}</div>
+          </div>
+        </div>
+        <div className="flex shrink-0 gap-1.5">{children}</div>
+      </div>
     </div>
+  );
+}
+
+const SMALL_BTN =
+  "min-h-11 rounded-md border border-surface-raised px-3 text-xs font-semibold text-fg/80 transition-colors duration-150 hover:border-accent hover:text-accent disabled:opacity-50";
+
+function StravaRow() {
+  const { data: status, isLoading, error } = useStravaStatus();
+  const connect = useStravaConnect();
+  const disconnect = useStravaDisconnect();
+  const sync = useStravaSync();
+
+  const connected = status?.connected ?? false;
+  const statusText = isLoading
+    ? "Checking…"
+    : error
+      ? "Status unavailable"
+      : connected
+        ? sync.isSuccess
+          ? `Imported ${sync.data.imported} of ${sync.data.fetched} activities`
+          : "Connected"
+        : "Not connected";
+
+  return (
+    <IntegrationShell initials="S" name="Strava" status={statusText} connected={connected}>
+      {connected ? (
+        <>
+          <button type="button" onClick={() => sync.mutate()} disabled={sync.isPending} className={SMALL_BTN}>
+            {sync.isPending ? "Syncing…" : "Sync now"}
+          </button>
+          <button
+            type="button"
+            onClick={() => disconnect.mutate()}
+            disabled={disconnect.isPending}
+            className={SMALL_BTN}
+          >
+            Disconnect
+          </button>
+        </>
+      ) : (
+        <button type="button" onClick={() => connect.mutate()} disabled={connect.isPending} className={SMALL_BTN}>
+          {connect.isPending ? "Opening…" : "Connect"}
+        </button>
+      )}
+    </IntegrationShell>
+  );
+}
+
+/**
+ * Apple Health has no web API — the Shortcut posting to ingest-health is the
+ * only route in, so there is nothing to "connect". Show when data last
+ * arrived instead of a button that couldn't do anything.
+ */
+function AppleHealthRow() {
+  const { data } = useHealthExportStatus();
+  const last = data?.lastMetricAt;
+  return (
+    <IntegrationShell
+      initials="A"
+      name="Apple Health"
+      connected={!!last}
+      isLast
+      status={
+        last
+          ? `Last delivery ${new Date(last).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+          : "No data received yet"
+      }
+    >
+      <span className="self-center text-[11px] text-muted">via Shortcut</span>
+    </IntegrationShell>
+  );
+}
+
+function ChangePasswordForm() {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (password.length < 8) {
+      setResult({ ok: false, message: "Use at least 8 characters." });
+      return;
+    }
+    if (password !== confirm) {
+      setResult({ ok: false, message: "Those don't match." });
+      return;
+    }
+    setSaving(true);
+    const supabase = createClient();
+    const { error } = await supabase.auth.updateUser({ password });
+    setSaving(false);
+    if (error) {
+      setResult({ ok: false, message: error.message });
+      return;
+    }
+    setPassword("");
+    setConfirm("");
+    setResult({ ok: true, message: "Password updated." });
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-2.5">
+      <p className="font-display text-[11px] font-bold uppercase tracking-wide text-muted">Change password</p>
+      <input
+        type="password"
+        autoComplete="new-password"
+        placeholder="New password"
+        aria-label="New password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        className="w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 text-[15px] text-fg placeholder:text-muted focus-visible:border-accent focus-visible:outline-none"
+      />
+      <input
+        type="password"
+        autoComplete="new-password"
+        placeholder="Confirm new password"
+        aria-label="Confirm new password"
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value)}
+        className="w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 text-[15px] text-fg placeholder:text-muted focus-visible:border-accent focus-visible:outline-none"
+      />
+      <button
+        type="submit"
+        disabled={saving || !password}
+        className="min-h-11 w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-bg transition-transform duration-200 active:scale-[0.98] disabled:opacity-50"
+      >
+        {saving ? "Saving…" : "Update password"}
+      </button>
+      {result && (
+        <p className={`text-center text-xs ${result.ok ? "text-accent" : "text-red-400"}`}>{result.message}</p>
+      )}
+    </form>
   );
 }
