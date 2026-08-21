@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { MIN_PASSWORD_LENGTH } from "@/lib/auth";
 
 type Mode = "signin" | "signup" | "reset";
 
@@ -85,7 +86,7 @@ export function SignInForm() {
         <input
           type="password"
           required
-          minLength={8}
+          minLength={mode === "signup" ? MIN_PASSWORD_LENGTH : undefined}
           autoComplete={mode === "signup" ? "new-password" : "current-password"}
           placeholder="password"
           value={password}

@@ -8,6 +8,7 @@ import { count as outboxCount } from "@/lib/sync/outbox";
 import { kcalFromMacros, scaleMacrosToKcal, type Macros } from "@/lib/calc/macros";
 import { displayWeightKg, inputToKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/queries/units";
+import { MIN_PASSWORD_LENGTH } from "@/lib/auth";
 import {
   useHealthExportStatus,
   useStravaConnect,
@@ -689,7 +690,17 @@ function AppleHealthRow() {
   );
 }
 
+/**
+ * Re-authenticates with the current password before changing it.
+ *
+ * Two reasons, both deliberate: a stolen unlocked session shouldn't be able to
+ * lock you out of your own account, and the successful sign-in refreshes the
+ * session so Supabase's "Secure password change" (recent-login requirement)
+ * and "Require current password when updating" are both satisfied without
+ * depending on a specific supabase-js API shape.
+ */
 function ChangePasswordForm() {
+  const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -697,22 +708,47 @@ function ChangePasswordForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (password.length < 8) {
-      setResult({ ok: false, message: "Use at least 8 characters." });
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setResult({ ok: false, message: `Use at least ${MIN_PASSWORD_LENGTH} characters.` });
       return;
     }
     if (password !== confirm) {
       setResult({ ok: false, message: "Those don't match." });
       return;
     }
+    if (password === currentPassword) {
+      setResult({ ok: false, message: "That's the password you already have." });
+      return;
+    }
+
     setSaving(true);
     const supabase = createClient();
+
+    const { data: userData } = await supabase.auth.getUser();
+    const email = userData.user?.email;
+    if (!email) {
+      setSaving(false);
+      setResult({ ok: false, message: "Not signed in." });
+      return;
+    }
+
+    const { error: reauthError } = await supabase.auth.signInWithPassword({
+      email,
+      password: currentPassword,
+    });
+    if (reauthError) {
+      setSaving(false);
+      setResult({ ok: false, message: "Current password is incorrect." });
+      return;
+    }
+
     const { error } = await supabase.auth.updateUser({ password });
     setSaving(false);
     if (error) {
       setResult({ ok: false, message: error.message });
       return;
     }
+    setCurrentPassword("");
     setPassword("");
     setConfirm("");
     setResult({ ok: true, message: "Password updated." });
@@ -723,8 +759,17 @@ function ChangePasswordForm() {
       <p className="font-display text-[11px] font-bold uppercase tracking-wide text-muted">Change password</p>
       <input
         type="password"
+        autoComplete="current-password"
+        placeholder="Current password"
+        aria-label="Current password"
+        value={currentPassword}
+        onChange={(e) => setCurrentPassword(e.target.value)}
+        className="w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 text-[15px] text-fg placeholder:text-muted focus-visible:border-accent focus-visible:outline-none"
+      />
+      <input
+        type="password"
         autoComplete="new-password"
-        placeholder="New password"
+        placeholder={`New password (${MIN_PASSWORD_LENGTH}+ characters)`}
         aria-label="New password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
@@ -741,7 +786,7 @@ function ChangePasswordForm() {
       />
       <button
         type="submit"
-        disabled={saving || !password}
+        disabled={saving || !password || !currentPassword}
         className="min-h-11 w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-bg transition-transform duration-200 active:scale-[0.98] disabled:opacity-50"
       >
         {saving ? "Saving…" : "Update password"}

@@ -1,0 +1,19 @@
+-- SECURITY FIX.
+--
+-- daily_rollup was created without `security_invoker`, so on PostgreSQL it
+-- executed with its OWNER's privileges. Row-level security on the underlying
+-- tables was therefore never applied to the querying user: any authenticated
+-- user could `select * from daily_rollup` with no user_id filter and read
+-- every user's nutrition, weight, sleep, HRV and training history.
+--
+-- Verified before the fix (as role `authenticated`, no auth.uid()):
+--   select count(*) from daily_rollup;  -> 5   (should be 0)
+-- And after:
+--   select count(*) from daily_rollup;  -> 0
+--
+-- Application queries already filter by user_id (lib/queries/dashboard.ts), so
+-- this changes nothing for legitimate use. It removes the ability to NOT filter.
+--
+-- Any future view over user-owned tables MUST set this. A view is not covered
+-- by the RLS on its base tables unless it runs as the invoker.
+alter view public.daily_rollup set (security_invoker = on);

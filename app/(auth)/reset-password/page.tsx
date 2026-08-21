@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { MIN_PASSWORD_LENGTH } from "@/lib/auth";
 
 /**
  * Landing page for the emailed recovery link. Supabase establishes a session
@@ -21,7 +22,8 @@ export default function ResetPasswordPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (password.length < 8) return setError("Use at least 8 characters.");
+    if (password.length < MIN_PASSWORD_LENGTH)
+      return setError(`Use at least ${MIN_PASSWORD_LENGTH} characters.`);
     if (password !== confirm) return setError("Those don't match.");
 
     setSaving(true);
@@ -54,7 +56,7 @@ export default function ResetPasswordPage() {
             <input
               type="password"
               required
-              minLength={8}
+              minLength={MIN_PASSWORD_LENGTH}
               autoComplete="new-password"
               placeholder="New password"
               aria-label="New password"
@@ -65,7 +67,7 @@ export default function ResetPasswordPage() {
             <input
               type="password"
               required
-              minLength={8}
+              minLength={MIN_PASSWORD_LENGTH}
               autoComplete="new-password"
               placeholder="Confirm new password"
               aria-label="Confirm new password"
