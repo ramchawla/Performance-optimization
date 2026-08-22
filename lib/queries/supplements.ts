@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { combineLocal, todayLocal } from "@/lib/datetime";
+import { combineLocal, localDateOf, todayLocal } from "@/lib/datetime";
 import { enqueueAndSync } from "@/lib/sync/syncWorker";
 import type { Database } from "@/lib/database.types";
 
@@ -204,7 +204,7 @@ export function useSupplementAdherence(days = 30) {
         .from("supplement_intakes")
         .select("supplement_id, log_date, skipped")
         .eq("user_id", userData.user.id)
-        .gte("log_date", since.toLocaleDateString("en-CA"));
+        .gte("log_date", localDateOf(since));
       if (error) throw error;
 
       // Distinct days taken per supplement — two doses in a day is still one

@@ -2,12 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { enqueueAndSync } from "@/lib/sync/syncWorker";
 import type { Database } from "@/lib/database.types";
+import { todayLocal } from "@/lib/datetime";
 
 export type MobilityLog = Database["public"]["Tables"]["mobility_logs"]["Row"];
-
-function todayLocal(): string {
-  return new Date().toLocaleDateString("en-CA");
-}
 
 /** Most recent `limit` mobility_logs rows, newest first — schema is one flat row/day (no routines/sessions). */
 export function useMobilityHistory(limit = 14) {

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { enqueueAndSync } from "@/lib/sync/syncWorker";
 import type { Database } from "@/lib/database.types";
+import { todayLocal } from "@/lib/datetime";
 
 export type BodyMetric = Database["public"]["Tables"]["body_metrics"]["Row"];
 export type ProgressPhoto = Database["public"]["Tables"]["progress_photos"]["Row"];
@@ -41,7 +42,7 @@ export interface LogBodyMetricInput {
  */
 function measuredAtFor(measuredOn: string | undefined): string {
   if (!measuredOn) return new Date().toISOString();
-  if (measuredOn === new Date().toLocaleDateString("en-CA")) return new Date().toISOString();
+  if (measuredOn === todayLocal()) return new Date().toISOString();
   return new Date(`${measuredOn}T12:00:00`).toISOString();
 }
 

@@ -6,13 +6,10 @@ import { FoodPicker } from "@/components/food/FoodPicker";
 import { FoodSubnav } from "@/components/food/FoodSubnav";
 import type { Food } from "@/lib/queries/foods";
 import type { Database } from "@/lib/database.types";
+import { todayLocal } from "@/lib/datetime";
 
 type MealType = Database["public"]["Enums"]["meal_type"];
 const MEALS: MealType[] = ["breakfast", "lunch", "dinner", "snack", "pre_workout", "post_workout"];
-
-function todayLocal(): string {
-  return new Date().toLocaleDateString("en-CA");
-}
 
 const inputCls =
   "rounded-xl border border-surface-raised bg-bg px-2 py-1.5 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none";

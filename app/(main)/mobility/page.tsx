@@ -5,6 +5,7 @@ import { WeekRing } from "@/components/mobility/WeekRing";
 import { RecentSessions, type RecentSessionItem } from "@/components/mobility/RecentSessions";
 import { PresetPlayer } from "@/components/mobility/PresetPlayer";
 import { useLogMobility, useMobilityHistory } from "@/lib/queries/mobility";
+import { todayLocal } from "@/lib/datetime";
 import {
   BODY_PART_LABELS,
   CONDITION_LABELS,
@@ -29,10 +30,6 @@ const BODY_PARTS = Object.keys(BODY_PART_LABELS) as BodyPart[];
 const CONDITIONS = Object.keys(CONDITION_LABELS) as Condition[];
 
 const EQUIPMENT_KEY = "perfhub:mobilityEquipment";
-
-function todayLocal(): string {
-  return new Date().toLocaleDateString("en-CA");
-}
 
 function daysAgo(logDate: string): number {
   const d = new Date(`${logDate}T12:00:00`);

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FoodSubnav } from "@/components/food/FoodSubnav";
-import { formatDate, formatTime, nowTimeInput, todayLocal } from "@/lib/datetime";
+import { formatDate, formatTime, nowTimeInput, shiftDate, todayLocal } from "@/lib/datetime";
 import {
   CONTEXT_LABELS,
   DRINK_CONTEXTS,
@@ -19,12 +19,6 @@ import {
 import { summarizeHydration } from "@/lib/calc/hydration";
 
 const DAILY_TARGET_ML = 3000;
-
-function shiftDate(date: string, days: number): string {
-  const d = new Date(`${date}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return d.toLocaleDateString("en-CA");
-}
 
 const FIELD =
   "w-full rounded-xl border border-surface-raised bg-bg px-3 py-2 font-mono text-sm text-fg focus-visible:border-accent focus-visible:outline-none";

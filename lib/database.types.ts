@@ -1161,6 +1161,7 @@ export type Database = {
           trained: boolean | null
           user_id: string | null
           water_ml: number | null
+          water_equivalent_ml: number | null
           weight_kg: number | null
         }
         Relationships: []

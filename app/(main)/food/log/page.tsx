@@ -8,7 +8,7 @@ import { CustomFoodForm } from "@/components/food/CustomFoodForm";
 import { MacroSummary } from "@/components/food/MacroSummary";
 import { FoodSubnav } from "@/components/food/FoodSubnav";
 import { createClient } from "@/lib/supabase/client";
-import { formatTime } from "@/lib/datetime";
+import { formatTime, shiftDate, todayLocal } from "@/lib/datetime";
 import { useDailyLog, useDailyTotals, useNutritionTargets, useDeleteNutritionLog } from "@/lib/queries/nutrition";
 import type { Food } from "@/lib/queries/foods";
 import type { Database } from "@/lib/database.types";
@@ -30,16 +30,6 @@ const MEAL_META: Record<MealType, { label: string; abbr: string; subtitle: strin
   pre_workout: { label: "Pre-Workout", abbr: "PRE", subtitle: "Fuel before you lift", iconBg: "bg-sky-400/15", iconText: "text-sky-400", kcalText: "text-sky-400" },
   post_workout: { label: "Post-Workout", abbr: "PST", subtitle: "Refuel window is open", iconBg: "bg-violet-400/15", iconText: "text-violet-400", kcalText: "text-violet-400" },
 };
-
-function todayLocal(): string {
-  return new Date().toLocaleDateString("en-CA");
-}
-
-function shiftDate(date: string, days: number): string {
-  const d = new Date(`${date}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return d.toLocaleDateString("en-CA");
-}
 
 export default function FoodLogPage() {
   const [logDate, setLogDate] = useState(todayLocal);

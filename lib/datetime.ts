@@ -87,6 +87,20 @@ export function combineLocal(date: string, time: string): string {
   return new Date(`${date}T${safeTime}`).toISOString();
 }
 
+/**
+ * Move a YYYY-MM-DD date by whole days.
+ *
+ * Deliberately does the arithmetic in UTC: this is pure calendar maths on a
+ * date string, and involving any timezone only creates a way for "yesterday"
+ * to land on the wrong day near a DST boundary or a large UTC offset. Midday
+ * anchoring keeps a ±1h DST shift from crossing midnight.
+ */
+export function shiftDate(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Whole days between two local dates — positive when `date` is in the past. */
 export function daysAgo(date: string): number {
   const then = new Date(`${date}T12:00:00`).getTime();

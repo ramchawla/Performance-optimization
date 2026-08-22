@@ -12,9 +12,6 @@ import { WeightTrendChart } from "@/components/charts/WeightTrendChart";
 import { VolumeBarChart } from "@/components/charts/VolumeBarChart";
 import { useDashboard } from "@/lib/queries/dashboard";
 import { useUpsertSleepLog } from "@/lib/queries/sleep";
-import { useReadinessLog } from "@/lib/queries/readiness";
-import { useHydrationLog } from "@/lib/queries/hydration";
-import { summarizeHydration } from "@/lib/calc/hydration";
 import { todayLocal } from "@/lib/datetime";
 
 function trendFor(slope: number | null): "up" | "down" | "flat" {
@@ -66,7 +63,7 @@ function SleepQuickAdd() {
         e.preventDefault();
         upsert.mutate(
           {
-            logDate: new Date().toLocaleDateString("en-CA"),
+            logDate: todayLocal(),
             bedtimeAt: null,
             waketimeAt: null,
             durationS: Math.round(Number(hours) * 3600),
@@ -109,23 +106,26 @@ function SleepQuickAdd() {
  * entry is visible rather than silently absent.
  */
 function TodayStrip() {
-  const today = todayLocal();
-  const { data: readiness } = useReadinessLog(today);
-  const { data: drinks } = useHydrationLog(today);
-  const totals = summarizeHydration(drinks ?? []);
+  // Reads the rollup the page already fetched rather than firing its own
+  // readiness and hydration queries — same TanStack cache key, so this is free.
+  // water_equivalent_ml excludes alcohol exactly as lib/calc/hydration.ts does
+  // (migration 0008), so the number here matches the Water screen's.
+  const { data } = useDashboard();
+  const waterMl = data?.today?.waterEquivalentMl ?? 0;
+  const readinessScore = data?.today?.readinessScore ?? null;
 
   const items = [
     {
       href: "/readiness",
       label: "Check-in",
-      value: readiness?.readiness_score != null ? `${readiness.readiness_score}/10` : "—",
-      done: !!readiness,
+      value: readinessScore != null ? `${readinessScore}/10` : "—",
+      done: readinessScore != null,
     },
     {
       href: "/food/water",
       label: "Water",
-      value: totals.waterEquivalentMl > 0 ? `${(totals.waterEquivalentMl / 1000).toFixed(1)}L` : "—",
-      done: totals.waterEquivalentMl > 0,
+      value: waterMl > 0 ? `${(waterMl / 1000).toFixed(1)}L` : "—",
+      done: waterMl > 0,
     },
     {
       href: "/food/supplements",

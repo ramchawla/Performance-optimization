@@ -2,12 +2,9 @@
 
 import { useRef, useState } from "react";
 import { useUploadProgressPhoto, type PhotoPose } from "@/lib/queries/body";
+import { todayLocal } from "@/lib/datetime";
 
 const POSES: PhotoPose[] = ["front", "side", "back", "other"];
-
-function todayLocal(): string {
-  return new Date().toLocaleDateString("en-CA");
-}
 
 export function PhotoUpload({
   latestWeightKg,

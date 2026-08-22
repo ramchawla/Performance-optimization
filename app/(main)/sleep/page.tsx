@@ -4,10 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { formatDuration, resolveSleepWindow } from "@/lib/calc/sleepWindow";
 import { useSleepHistory, useSleepLog, useUpsertSleepLog, type SleepLog } from "@/lib/queries/sleep";
-
-function todayLocal(): string {
-  return new Date().toLocaleDateString("en-CA");
-}
+import { todayLocal } from "@/lib/datetime";
 
 /** "" is the honest representation of "I didn't record this", not 0. */
 function toNum(v: string): number | null {

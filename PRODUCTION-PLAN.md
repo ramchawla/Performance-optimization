@@ -130,6 +130,14 @@ photos have no provider-side copy whatsoever.
 3. ✅ **Timezone** (`DATA-3`). `profiles.timezone` is now read, set from a
    picker in Settings → Profile, and applied via `setProfileTimezone()` when the
    profile loads.
+   *Completed in a follow-up:* the first pass centralised `todayLocal()` but
+   **14 call sites bypassed it**, six of them by defining their own
+   `todayLocal()` that shadowed the real one — so most of the app still derived
+   dates from the device and the fix did almost nothing in practice. All of them
+   now route through `lib/datetime`. The triplicated `shiftDate` moved there too
+   and switched to UTC arithmetic: it's pure calendar maths on a date string,
+   and involving a timezone only creates a way for "yesterday" to land wrong
+   across a DST boundary. It has tests covering DST, leap days and year ends.
    The rule this settled, documented in `lib/datetime.ts`: **date attribution
    uses the profile zone, clock times use the device zone.** "Which day does
    this belong to" must be stable when you travel, or a trip scatters entries
@@ -225,14 +233,34 @@ that public sign-up is off (Phase 1's last item).
 should land first — an insight engine reading from an unreliable, unexportable,
 untested store is a fast way to trust wrong conclusions.*
 
-## Phase 6 — Performance & product polish
+## Phase 6 — Performance & product polish *(1, 2, 4 done)*
 
-1. `(select auth.uid())` across all 36 policies (`PERF-1`) — one migration.
-2. Indexes for the 10 unindexed FKs (`PERF-2`).
+1. ✅ `(select auth.uid())` across all **28** policies (`PERF-1`) — migration
+   `0007`. (The estimate of 36 was off; the linter reported 27 findings across
+   28 policies.) Verified three ways, because this is the auth layer: no bare
+   `auth.uid()` remains, no policy was left with an empty predicate, and a
+   functional check as role `authenticated` with no identity still returns 0
+   rows from every user table while shared `exercises` stay readable.
+2. ✅ Indexes for the **11** unindexed FKs (`PERF-2`) — same migration.
+   Advisor now reports zero warnings and zero unindexed-FK findings; only
+   "unused index" INFO remains, which is expected for indexes created minutes
+   ago on features not yet exercised.
 3. Convert `daily_rollup` to a materialized view with scheduled refresh **only
    if** measurement shows it's needed (0001 §11's own threshold: >200ms).
-4. Dashboard reads `water_ml` / `caffeine_mg` / `readiness_score` from the
-   rollup instead of separate queries.
+4. ✅ Dashboard reads hydration and readiness from the rollup instead of two
+   extra queries.
+   This turned up a genuine defect rather than a refactor: `daily_rollup.water_ml`
+   is a raw `sum(volume_ml)` that **counts alcohol as hydration**, while
+   `lib/calc/hydration.ts` deliberately excludes it. Nothing user-facing was
+   wrong yet, because only the client figure was displayed — but Phase 5's AI
+   layer reads the rollup, so it would have reasoned about a different number
+   than the dashboard shows and could call a heavy-drinking day well hydrated.
+   Migration `0008` adds `water_equivalent_ml` matching the client rule and
+   leaves `water_ml` alone (total fluid volume is a real, separate quantity;
+   silently redefining a column breaks readers without telling them).
+   That migration also re-applies `security_invoker`, because
+   `create or replace view` drops view options and would otherwise have
+   silently undone the RLS fix from `0005`. Verified after applying.
 5. Expand correlations now that readiness, hydration and caffeine timing exist
    — caffeine-after-2pm vs sleep is the one most likely to tell you something.
 6. Remaining roadmap Wave 2: soreness UI, training phase, PR detection.

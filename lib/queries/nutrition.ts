@@ -139,7 +139,7 @@ export interface NutritionTargets {
  * `completed_at is not null`, so it's the wrong primitive for this.
  */
 export function useNutritionTargets(logDate?: string) {
-  const date = logDate ?? new Date().toLocaleDateString("en-CA");
+  const date = logDate ?? todayLocal();
   return useQuery({
     queryKey: ["profile", "nutrition-targets", date],
     queryFn: async (): Promise<NutritionTargets> => {

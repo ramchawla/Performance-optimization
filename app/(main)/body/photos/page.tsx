@@ -6,6 +6,7 @@ import { PhotoUpload } from "@/components/body/PhotoUpload";
 import { groupPhotoSessions, useBodyMetricsHistory, useLogBodyMetric, useProgressPhotos } from "@/lib/queries/body";
 import { displayWeightKg, inputToKg } from "@/lib/units";
 import { useUnits } from "@/lib/queries/units";
+import { todayLocal } from "@/lib/datetime";
 
 // ponytail: fixed viewBox, so a static dash length (longer than any path this
 // data can produce) works for the draw-on animation without measuring the
@@ -75,10 +76,6 @@ function deltaLabel(deltaCm: number) {
 
 const inputCls =
   "w-full rounded-xl border border-surface-raised bg-bg px-3 py-2 font-mono text-[15px] text-fg transition-colors duration-150 focus-visible:border-accent focus-visible:outline-none";
-
-function todayLocal(): string {
-  return new Date().toLocaleDateString("en-CA");
-}
 
 function LogMetricForm({ onDone }: { onDone: () => void }) {
   const logMetric = useLogBodyMetric();

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FoodSubnav } from "@/components/food/FoodSubnav";
-import { formatDate, formatTime, todayLocal } from "@/lib/datetime";
+import { formatDate, formatTime, shiftDate, todayLocal } from "@/lib/datetime";
 import {
   DOSE_UNITS,
   FORMS,
@@ -22,12 +22,6 @@ import {
 const FIELD =
   "w-full rounded-xl border border-surface-raised bg-bg px-3 py-2 font-mono text-sm text-fg placeholder:text-muted focus-visible:border-accent focus-visible:outline-none";
 const LABEL = "mb-1 block text-[11px] uppercase tracking-wide text-muted";
-
-function shiftDate(date: string, days: number): string {
-  const d = new Date(`${date}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return d.toLocaleDateString("en-CA");
-}
 
 function doseLabel(s: Pick<Supplement, "dose_amount" | "dose_unit">): string {
   if (s.dose_amount === null) return "";

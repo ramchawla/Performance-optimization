@@ -4,6 +4,7 @@ import { computeWeightEMA, emaSlopeKgPerWeek, type TrendPoint } from "@/lib/calc
 import { buildProgressSeries, e1rmSlopePerWeek, type ProgressPoint } from "@/lib/calc/e1rm";
 import { computeCorrelation, pairDailySeries, type DailyMetric } from "@/lib/calc/correlation";
 import type { Database } from "@/lib/database.types";
+import { localDateOf } from "@/lib/datetime";
 
 export interface DashboardData {
   today: {
@@ -13,6 +14,10 @@ export interface DashboardData {
     carbsG: number | null;
     fatG: number | null;
     trained: boolean;
+    /** Excludes alcohol, matching lib/calc/hydration.ts — see migration 0008. */
+    waterEquivalentMl: number | null;
+    caffeineMg: number | null;
+    readinessScore: number | null;
   } | null;
   targets: {
     calories: number | null;
@@ -41,9 +46,11 @@ function isoWeekLabel(dateIso: string): string {
 
 // UTC — fine only for relative-offset cutoffs like windowStart, never for "today".
 const isoDateUtc = (d: Date) => d.toISOString().slice(0, 10);
-// Local-timezone date, matching app/(main)/food/log/page.tsx's convention. Must be
-// used for todayIso/week lookups since daily_rollup.day is a client-set log_date.
-const isoDateLocal = (d: Date) => d.toLocaleDateString("en-CA");
+// Must be used for todayIso/week lookups, since daily_rollup.day is a
+// client-set log_date. Routed through lib/datetime so it honours the profile's
+// timezone rather than the device's — otherwise "today" on the dashboard could
+// disagree with the "today" a log was written under while travelling.
+const isoDateLocal = (d: Date) => localDateOf(d);
 
 // Row shape returned by the nested workout_sessions -> session_exercises ->
 // session_sets select below. The generated Supabase types don't model
@@ -79,7 +86,9 @@ export function useDashboard() {
       const [rollupRes, profileRes, bodyRes, sessionsRes, exercisesRes, nutritionRes, cardioRes] = await Promise.all([
         supabase
           .from("daily_rollup")
-          .select("day, calories, protein_g, carbs_g, fat_g, trained, sleep_s, resting_hr, steps")
+          .select(
+            "day, calories, protein_g, carbs_g, fat_g, trained, sleep_s, resting_hr, steps, water_equivalent_ml, caffeine_mg, readiness_score"
+          )
           .eq("user_id", userId)
           .gte("day", windowStart)
           .order("day"),
@@ -267,6 +276,9 @@ export function useDashboard() {
               carbsG: todayRow.carbs_g,
               fatG: todayRow.fat_g,
               trained: todayRow.trained ?? false,
+              waterEquivalentMl: todayRow.water_equivalent_ml,
+              caffeineMg: todayRow.caffeine_mg,
+              readinessScore: todayRow.readiness_score,
             }
           : null,
         targets: {
