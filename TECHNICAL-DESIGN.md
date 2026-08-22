@@ -44,7 +44,11 @@
 
 ## 3. Offline Sync — full design
 
-**Scope discipline:** ONLY these tables are offline-writable: `workout_sessions`, `session_exercises`, `session_sets`, `body_metrics`, `mobility_logs`, `soreness_logs`, `nutrition_logs`. Everything else (templates, foods editing, settings) requires connectivity. This kills 80% of sync complexity.
+**Scope discipline:** ONLY these tables are offline-writable: `workout_sessions`, `session_exercises`, `session_sets`, `body_metrics`, `mobility_logs`, `soreness_logs`, `nutrition_logs`, `sleep_logs`, `hydration_logs`, `supplement_intakes`, `readiness_logs`. Everything else (templates, foods editing, settings, supplement *definitions*) requires connectivity. This kills 80% of sync complexity.
+
+The last four were added in migration `0006`. The test is not "could this be written offline?" but "is this logged in a place with no signal?" — water in a basement gym, pre-workout on the gym floor, a readiness check-in on a plane. Supplement definitions stay online-only because they're created once in Settings, at a desk.
+
+**One-row-per-day tables need a derived `client_id`.** `sleep_logs` and `readiness_logs` are unique on `(user_id, log_date)`. A random `client_id` per edit would make the second edit of a day a fresh insert that the day-unique constraint rejects — permanently, since the outbox would retry the identical doomed payload forever. Their `client_id` is therefore `uuidv5(namespace, "<user_id>:<log_date>")` (`lib/sync/stableId.ts`), which migration `0006` reproduces in SQL to backfill rows written before they joined the outbox. Append-only tables (`hydration_logs`, `supplement_intakes`) keep a random UUID per row.
 
 **Mechanism — outbox pattern, not a generic sync engine:**
 - Every offline-writable mutation is written to an IndexedDB `outbox` store as `{ mutation_id, table, op ('upsert'|'delete'), payload, created_at, attempts }`, AND applied optimistically to the local TanStack Query cache.

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { enqueue } from "@/lib/sync/outbox";
+import { enqueueAndSync } from "@/lib/sync/syncWorker";
 import type { Database } from "@/lib/database.types";
 
 export type BodyMetric = Database["public"]["Tables"]["body_metrics"]["Row"];
@@ -55,7 +55,7 @@ export function useLogBodyMetric() {
       if (error || !userData.user) throw new Error("Not signed in");
 
       const clientId = crypto.randomUUID();
-      await enqueue("body_metrics", "upsert", {
+      await enqueueAndSync("body_metrics", "upsert", {
         id: clientId,
         client_id: clientId,
         user_id: userData.user.id,

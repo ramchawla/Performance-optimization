@@ -243,6 +243,7 @@ export type Database = {
         Row: {
           alcohol_units: number | null
           caffeine_mg: number | null
+          client_id: string | null
           consumed_at: string
           context: string | null
           drink_type: string
@@ -257,6 +258,7 @@ export type Database = {
         Insert: {
           alcohol_units?: number | null
           caffeine_mg?: number | null
+          client_id?: string | null
           consumed_at?: string
           context?: string | null
           drink_type?: string
@@ -271,6 +273,7 @@ export type Database = {
         Update: {
           alcohol_units?: number | null
           caffeine_mg?: number | null
+          client_id?: string | null
           consumed_at?: string
           context?: string | null
           drink_type?: string
@@ -545,6 +548,7 @@ export type Database = {
       readiness_logs: {
         Row: {
           appetite: number | null
+          client_id: string | null
           energy: number | null
           id: string
           illness: string | null
@@ -564,6 +568,7 @@ export type Database = {
         }
         Insert: {
           appetite?: number | null
+          client_id?: string | null
           energy?: number | null
           id?: string
           illness?: string | null
@@ -583,6 +588,7 @@ export type Database = {
         }
         Update: {
           appetite?: number | null
+          client_id?: string | null
           energy?: number | null
           id?: string
           illness?: string | null
@@ -781,6 +787,7 @@ export type Database = {
       sleep_logs: {
         Row: {
           bedtime_at: string | null
+          client_id: string | null
           core_s: number | null
           deep_s: number | null
           duration_s: number | null
@@ -798,6 +805,7 @@ export type Database = {
         }
         Insert: {
           bedtime_at?: string | null
+          client_id?: string | null
           core_s?: number | null
           deep_s?: number | null
           duration_s?: number | null
@@ -815,6 +823,7 @@ export type Database = {
         }
         Update: {
           bedtime_at?: string | null
+          client_id?: string | null
           core_s?: number | null
           deep_s?: number | null
           duration_s?: number | null
@@ -878,6 +887,7 @@ export type Database = {
       }
       supplement_intakes: {
         Row: {
+          client_id: string | null
           dose_amount: number | null
           dose_unit: string | null
           id: string
@@ -892,6 +902,7 @@ export type Database = {
           with_food: boolean | null
         }
         Insert: {
+          client_id?: string | null
           dose_amount?: number | null
           dose_unit?: string | null
           id?: string
@@ -906,6 +917,7 @@ export type Database = {
           with_food?: boolean | null
         }
         Update: {
+          client_id?: string | null
           dose_amount?: number | null
           dose_unit?: string | null
           id?: string

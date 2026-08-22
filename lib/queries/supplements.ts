@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { combineLocal, todayLocal } from "@/lib/datetime";
+import { enqueueAndSync } from "@/lib/sync/syncWorker";
 import type { Database } from "@/lib/database.types";
 
 export type Supplement = Database["public"]["Tables"]["supplements"]["Row"];
@@ -140,34 +141,36 @@ export interface LogIntakeInput {
   notes?: string | null;
 }
 
-/** Dose is snapshotted from the definition (CLAUDE.md rule 2). */
+/**
+ * Dose is snapshotted from the definition (CLAUDE.md rule 2), and the write is
+ * offline-writable via the outbox (rule 3) — pre-workout gets taken at the gym.
+ * Append-only, so a random client_id per row is the right idempotency key.
+ */
 export function useLogSupplementIntake() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: LogIntakeInput): Promise<SupplementIntake> => {
+    mutationFn: async (input: LogIntakeInput): Promise<string> => {
       const supabase = createClient();
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       if (userErr || !userData.user) throw new Error("Not signed in");
 
       const logDate = input.logDate ?? todayLocal();
-      const { data, error } = await supabase
-        .from("supplement_intakes")
-        .insert({
-          user_id: userData.user.id,
-          supplement_id: input.supplement.id,
-          log_date: logDate,
-          taken_at: input.time ? combineLocal(logDate, input.time) : new Date().toISOString(),
-          dose_amount: input.supplement.dose_amount,
-          dose_unit: input.supplement.dose_unit,
-          with_food: input.withFood ?? null,
-          skipped: input.skipped ?? false,
-          skip_reason: input.skipReason ?? null,
-          notes: input.notes ?? null,
-        })
-        .select("*")
-        .single();
-      if (error) throw error;
-      return data;
+      const clientId = crypto.randomUUID();
+      await enqueueAndSync("supplement_intakes", "upsert", {
+        id: clientId,
+        client_id: clientId,
+        user_id: userData.user.id,
+        supplement_id: input.supplement.id,
+        log_date: logDate,
+        taken_at: input.time ? combineLocal(logDate, input.time) : new Date().toISOString(),
+        dose_amount: input.supplement.dose_amount,
+        dose_unit: input.supplement.dose_unit,
+        with_food: input.withFood ?? null,
+        skipped: input.skipped ?? false,
+        skip_reason: input.skipReason ?? null,
+        notes: input.notes ?? null,
+      });
+      return clientId;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["supplement-intakes"] }),
   });

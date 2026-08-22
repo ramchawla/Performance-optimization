@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
+import { enqueueAndSync } from "@/lib/sync/syncWorker";
+import { dailyClientId } from "@/lib/sync/stableId";
 
 export type SleepLog = Database["public"]["Tables"]["sleep_logs"]["Row"];
 
@@ -64,49 +66,44 @@ export function useSleepHistory(limit = 30) {
 }
 
 /**
- * ponytail: direct write, not via the offline outbox. Sleep gets logged in the
- * morning at home, and adding a table to the outbox list means amending
- * TECHNICAL-DESIGN §3 and the writer's table union. Revisit if a night ever
- * gets lost to a dead connection.
+ * Offline-writable via the outbox (CLAUDE.md rule 3).
+ *
+ * One row per day, so the client_id is derived from (user_id, log_date) rather
+ * than random — see lib/sync/stableId.ts. Editing the same night twice must
+ * produce the same key, otherwise the second edit tries to insert a second row
+ * for that date and is rejected by the day-unique constraint forever.
  */
 export function useUpsertSleepLog() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: SleepLogInput): Promise<SleepLog> => {
+    mutationFn: async (input: SleepLogInput): Promise<string> => {
       const supabase = createClient();
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       if (userErr || !userData.user) throw new Error("Not signed in");
 
-      const { data, error } = await supabase
-        .from("sleep_logs")
-        .upsert(
-          {
-            user_id: userData.user.id,
-            log_date: input.logDate,
-            bedtime_at: input.bedtimeAt,
-            waketime_at: input.waketimeAt,
-            duration_s: input.durationS,
-            rem_s: input.remS,
-            deep_s: input.deepS,
-            core_s: input.coreS,
-            score_disruptions: input.scoreDisruptions,
-            score_consistency: input.scoreConsistency,
-            score_duration: input.scoreDuration,
-            quality: input.quality,
-            notes: input.notes,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id,log_date" }
-        )
-        .select("*")
-        .single();
-      if (error) throw error;
-      return data;
+      const clientId = await dailyClientId(userData.user.id, input.logDate);
+      await enqueueAndSync("sleep_logs", "upsert", {
+        client_id: clientId,
+        user_id: userData.user.id,
+        log_date: input.logDate,
+        bedtime_at: input.bedtimeAt,
+        waketime_at: input.waketimeAt,
+        duration_s: input.durationS,
+        rem_s: input.remS,
+        deep_s: input.deepS,
+        core_s: input.coreS,
+        score_disruptions: input.scoreDisruptions,
+        score_consistency: input.scoreConsistency,
+        score_duration: input.scoreDuration,
+        quality: input.quality,
+        notes: input.notes,
+        updated_at: new Date().toISOString(),
+      });
+      return clientId;
     },
-    onSuccess: (row) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sleep"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
-      return row;
     },
   });
 }

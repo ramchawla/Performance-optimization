@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { enqueue } from "@/lib/sync/outbox";
+import { enqueueAndSync } from "@/lib/sync/syncWorker";
 import { useActiveSessionStore, type ActiveSessionExercise } from "@/stores/activeSession";
 import type { TemplateExerciseWithName } from "@/lib/queries/templates";
 import type { Database } from "@/lib/database.types";
@@ -50,7 +50,7 @@ export function useStartSession() {
         })),
       }));
 
-      await enqueue("workout_sessions", "upsert", {
+      await enqueueAndSync("workout_sessions", "upsert", {
         id: sessionId,
         client_id: sessionId,
         user_id: userData.user.id,
@@ -61,7 +61,7 @@ export function useStartSession() {
       });
 
       for (const ex of activeExercises) {
-        await enqueue("session_exercises", "upsert", {
+        await enqueueAndSync("session_exercises", "upsert", {
           id: ex.clientId,
           client_id: ex.clientId,
           session_id: sessionId,
@@ -156,7 +156,7 @@ export function useLogSet() {
       actualWeightKg: number;
       actualRpe: number | null;
     }) => {
-      await enqueue("session_sets", "upsert", {
+      await enqueueAndSync("session_sets", "upsert", {
         id: input.setClientId,
         client_id: input.setClientId,
         session_exercise_id: input.sessionExerciseClientId,
@@ -187,7 +187,7 @@ export function useCompleteSession() {
       const { data: userData, error } = await supabase.auth.getUser();
       if (error || !userData.user) throw new Error("Not signed in");
 
-      await enqueue("workout_sessions", "upsert", {
+      await enqueueAndSync("workout_sessions", "upsert", {
         id: input.clientId,
         client_id: input.clientId,
         user_id: userData.user.id,

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/lib/database.types";
+import { setProfileTimezone } from "@/lib/datetime";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type ProfilePatch = Partial<
@@ -36,6 +37,10 @@ export function useProfile() {
 
       const { data, error } = await supabase.from("profiles").select("*").eq("user_id", userData.user.id).single();
       if (error) throw error;
+      // The one place the profile is ever loaded, so the one place worth
+      // teaching lib/datetime which timezone dates belong to. Until this runs,
+      // date helpers fall back to the device's zone — same as before.
+      setProfileTimezone(data.timezone);
       return data;
     },
   });

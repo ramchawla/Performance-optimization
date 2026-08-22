@@ -4,6 +4,7 @@ import { summarizeHydration, type HydrationLog } from "./hydration";
 function entry(partial: Partial<HydrationLog>): HydrationLog {
   return {
     id: crypto.randomUUID(),
+    client_id: null,
     user_id: "u",
     log_date: "2026-08-17",
     consumed_at: "2026-08-17T09:00:00.000Z",

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { combineLocal, todayLocal } from "@/lib/datetime";
+import { enqueueAndSync } from "@/lib/sync/syncWorker";
 import type { Database } from "@/lib/database.types";
 
 export type HydrationLog = Database["public"]["Tables"]["hydration_logs"]["Row"];
@@ -88,33 +89,36 @@ export interface LogDrinkInput {
   notes?: string | null;
 }
 
+/**
+ * Offline-writable via the outbox (CLAUDE.md rule 3) — water is logged in gyms,
+ * on trains and in basements, which is exactly where a direct write is lost.
+ * Append-only, so a random client_id per row is the right idempotency key.
+ */
 export function useLogDrink() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: LogDrinkInput): Promise<HydrationLog> => {
+    mutationFn: async (input: LogDrinkInput): Promise<string> => {
       const supabase = createClient();
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       if (userErr || !userData.user) throw new Error("Not signed in");
 
       const logDate = input.logDate ?? todayLocal();
-      const { data, error } = await supabase
-        .from("hydration_logs")
-        .insert({
-          user_id: userData.user.id,
-          log_date: logDate,
-          consumed_at: input.time ? combineLocal(logDate, input.time) : new Date().toISOString(),
-          volume_ml: input.volumeMl,
-          drink_type: input.drinkType,
-          caffeine_mg: input.caffeineMg ?? null,
-          alcohol_units: input.alcoholUnits ?? null,
-          sodium_mg: input.sodiumMg ?? null,
-          context: input.context ?? null,
-          notes: input.notes ?? null,
-        })
-        .select("*")
-        .single();
-      if (error) throw error;
-      return data;
+      const clientId = crypto.randomUUID();
+      await enqueueAndSync("hydration_logs", "upsert", {
+        id: clientId,
+        client_id: clientId,
+        user_id: userData.user.id,
+        log_date: logDate,
+        consumed_at: input.time ? combineLocal(logDate, input.time) : new Date().toISOString(),
+        volume_ml: input.volumeMl,
+        drink_type: input.drinkType,
+        caffeine_mg: input.caffeineMg ?? null,
+        alcohol_units: input.alcoholUnits ?? null,
+        sodium_mg: input.sodiumMg ?? null,
+        context: input.context ?? null,
+        notes: input.notes ?? null,
+      });
+      return clientId;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["hydration"] });

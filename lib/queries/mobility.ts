@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { enqueue } from "@/lib/sync/outbox";
+import { enqueueAndSync } from "@/lib/sync/syncWorker";
 import type { Database } from "@/lib/database.types";
 
 export type MobilityLog = Database["public"]["Tables"]["mobility_logs"]["Row"];
@@ -53,7 +53,7 @@ export function useLogMobility() {
         .maybeSingle();
 
       const clientId = existing?.client_id ?? crypto.randomUUID();
-      await enqueue("mobility_logs", "upsert", {
+      await enqueueAndSync("mobility_logs", "upsert", {
         id: clientId,
         client_id: clientId,
         user_id: userData.user.id,

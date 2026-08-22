@@ -9,6 +9,7 @@ import { kcalFromMacros, scaleMacrosToKcal, type Macros } from "@/lib/calc/macro
 import { displayWeightKg, inputToKg } from "@/lib/units";
 import type { WeightUnit } from "@/lib/queries/units";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth";
+import { DataExport } from "@/components/settings/DataExport";
 import {
   useHealthExportStatus,
   useStravaConnect,
@@ -382,6 +383,13 @@ export default function Page() {
       </section>
 
       <section>
+        <SectionLabel>Your data</SectionLabel>
+        <div className="overflow-hidden rounded-2xl border border-surface-raised bg-surface">
+          <DataExport />
+        </div>
+      </section>
+
+      <section>
         <SectionLabel>Account</SectionLabel>
         <div className="overflow-hidden rounded-2xl border border-surface-raised bg-surface p-4">
           <ChangePasswordForm />
@@ -406,6 +414,14 @@ const PROFILE_FIELD =
 const PROFILE_LABEL = "mb-1 block text-[11px] uppercase tracking-wide text-muted";
 
 /**
+ * The browser ships the full IANA list, so there's no zone data to bundle or
+ * keep up to date. Guarded because supportedValuesOf is comparatively recent —
+ * an older browser gets a one-item list rather than a crash.
+ */
+const TIMEZONES: string[] =
+  typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+
+/**
  * Height, birth date and sex aren't vanity fields — Navy body fat, BMR and
  * FFMI are all uncomputable without them. Goals are what turn a trend line
  * into "on track" or "not".
@@ -426,6 +442,7 @@ function ProfileForm({ profile }: { profile: NonNullable<ReturnType<typeof usePr
         ? ""
         : String(Math.round(displayWeightKg(profile.goal_weight_kg, weightUnit)! * 10) / 10),
     goalBodyFat: profile.goal_body_fat_pct === null ? "" : String(profile.goal_body_fat_pct),
+    timezone: profile.timezone,
   }));
   const [saved, setSaved] = useState(false);
 
@@ -446,6 +463,7 @@ function ProfileForm({ profile }: { profile: NonNullable<ReturnType<typeof usePr
         // Goal weight is typed in display units and stored in kg (rule 1).
         goal_weight_kg: draft.goalWeight ? inputToKg(Number(draft.goalWeight), draft.unitWeight) : null,
         goal_body_fat_pct: draft.goalBodyFat ? Number(draft.goalBodyFat) : null,
+        timezone: draft.timezone,
       },
       {
         onSuccess: () => {
@@ -499,6 +517,29 @@ function ProfileForm({ profile }: { profile: NonNullable<ReturnType<typeof usePr
             <option value="km">Kilometres</option>
           </select>
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="p-tz" className={PROFILE_LABEL}>
+          Home timezone
+        </label>
+        <select
+          id="p-tz"
+          value={draft.timezone}
+          onChange={(e) => set("timezone", e.target.value)}
+          className={PROFILE_FIELD}
+        >
+          {TIMEZONES.includes(draft.timezone) ? null : <option value={draft.timezone}>{draft.timezone}</option>}
+          {TIMEZONES.map((tz) => (
+            <option key={tz} value={tz}>
+              {tz.replace(/_/g, " ")}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-[11px] leading-relaxed text-muted">
+          Which day a log belongs to is decided here, not by your phone — so travelling doesn&apos;t
+          split one day&apos;s entries across two dates. Change it only if you move.
+        </p>
       </div>
 
       <div className="grid grid-cols-3 gap-2">

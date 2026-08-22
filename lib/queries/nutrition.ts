@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
-import { enqueue } from "@/lib/sync/outbox";
+import { enqueueAndSync } from "@/lib/sync/syncWorker";
 import { scaleServing, sumDailyTotals, type DailyTotals } from "@/lib/calc/nutritionTotals";
 import { combineLocal, todayLocal } from "@/lib/datetime";
 import type { Food } from "@/lib/queries/foods";
@@ -45,7 +45,7 @@ export function useLogFood() {
       );
 
       const clientId = crypto.randomUUID();
-      await enqueue("nutrition_logs", "upsert", {
+      await enqueueAndSync("nutrition_logs", "upsert", {
         id: clientId,
         client_id: clientId,
         user_id: userData.user.id,

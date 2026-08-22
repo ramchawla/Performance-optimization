@@ -102,23 +102,63 @@ is independently shippable.
 3. Enable leaked-password protection (HaveIBeenPwned) — dashboard toggle.
 4. Re-run the Supabase security advisor; expect zero ERROR-level findings.
 
-## Phase 2 — Data safety
+## Phase 2 — Data safety ✅ DONE
 
-1. **Export** (`DATA-1`). A `/settings/export` route plus a
-   `lib/export/collect.ts` that walks every table for the user and emits:
-   - **JSON** — complete, lossless, the AI layer's input format.
-   - **CSV-per-table** in a zip — spreadsheet-friendly.
-   Deliberately built as a pure data-assembly module so Phase 5 reuses it
-   rather than reimplementing context gathering.
-2. **Backups** (`DATA-2`). Confirm the Supabase plan's retention. If it's thin,
-   add a scheduled job that writes the JSON export to storage weekly, so
-   there's always a restorable copy independent of Supabase's own backups.
-3. **Timezone** (`DATA-3`). Populate `profiles.timezone` on first load, and
-   route every `todayLocal()` call through a helper that honours it.
-   `lib/datetime.ts` already centralises these, so this is a contained change.
-4. **Outbox coverage** (`DATA-4`). Add the four new tables to `OutboxTable`,
-   give them `client_id` columns, and update TECHNICAL-DESIGN §3 — that doc
-   owns the offline-writable list, so it changes first.
+Confirmed during this phase: **the Supabase project is on the free plan.** That
+means daily backups with 7-day retention, no point-in-time recovery, and — the
+part that actually bites — **Storage is not backed up at all**, so progress
+photos have no provider-side copy whatsoever.
+
+1. ✅ **Export** (`DATA-1`). `lib/export/collect.ts` reads all 22 user-owned
+   tables and emits one lossless JSON file; `components/settings/DataExport.tsx`
+   downloads it from Settings → Your data, and nags in amber past 30 days
+   because on this plan the download *is* the backup.
+   - Every read is an unfiltered `select("*")`: RLS already scopes the rows, and
+     a manual `user_id` filter would be wrong on the four child tables that
+     don't have that column.
+   - `integration_accounts` is deliberately excluded — it holds live Strava
+     OAuth tokens, and an export is a file that ends up in cloud storage.
+   - A failing table lands in `errors` instead of aborting, and the UI reports
+     it. A backup you wrongly believe is complete is worse than none.
+   - Kept as pure data assembly so Phase 5 reuses it for AI context.
+2. ⚠️ **Backups** (`DATA-2`) — *partially done, one decision outstanding.*
+   The manual export covers total platform loss. It does not cover photos, and
+   it depends on remembering. Automating it means a scheduled job holding the
+   service-role key, which CLAUDE.md rule 4 confines to Edge Functions — so
+   that's a `supabase/functions/backup` + `pg_cron`, not a Vercel cron route.
+   **Needs your call before building** (see Part 3).
+3. ✅ **Timezone** (`DATA-3`). `profiles.timezone` is now read, set from a
+   picker in Settings → Profile, and applied via `setProfileTimezone()` when the
+   profile loads.
+   The rule this settled, documented in `lib/datetime.ts`: **date attribution
+   uses the profile zone, clock times use the device zone.** "Which day does
+   this belong to" must be stable when you travel, or a trip scatters entries
+   across the wrong dates; "what time was this" is only meaningful next to the
+   clock you're looking at. `todayLocal`/`localDateOf` are profile-zoned;
+   `toTimeInput`/`combineLocal` are device-local and round-trip exactly.
+4. ✅ **Outbox coverage** (`DATA-4`). Migration `0006` adds `client_id` to
+   `sleep_logs`, `hydration_logs`, `supplement_intakes` and `readiness_logs`;
+   all four mutations now queue instead of writing directly. TECHNICAL-DESIGN §3
+   updated with the new list and the reasoning.
+   Three things this turned up that weren't in the original plan:
+   - The daily tables (`sleep_logs`, `readiness_logs`) needed a **derived**
+     `client_id` (`lib/sync/stableId.ts`, UUIDv5 over `user_id:log_date`). With
+     a random one, a second edit of the same day would insert-conflict on the
+     day-unique constraint and the outbox would retry it forever.
+   - Existing rows had to be **backfilled** with the same derivation, which is
+     why the migration uses `uuid_generate_v5` — Postgres and the browser must
+     agree byte-for-byte. `stableId.test.ts` pins that against a value read out
+     of the live database.
+   - The unique indexes are **not partial**. Postgres nulls are already distinct
+     in a unique index, and a partial index can't act as an `on conflict`
+     arbiter, which would have silently broken every upsert.
+   - Queuing introduced a latency bug that direct writes didn't have: queries
+     read from the server, so invalidating before the drain repainted stale
+     data over a fresh save. `enqueueAndSync()` now awaits the drain, which also
+     removes the up-to-30s lag from the *existing* outbox tables.
+
+Also folded in: the dead "Create account" path is gone from `SignInForm` now
+that public sign-up is off (Phase 1's last item).
 
 ## Phase 3 — Reliability floor
 
@@ -184,16 +224,24 @@ untested store is a fast way to trust wrong conclusions.*
 
 # Part 3 — What I need from you
 
-### Immediately (Phase 1)
-- [ ] **Disable public sign-ups** — Supabase → Authentication → Providers →
-      Email → turn off "Enable sign-ups". Tell me once done and I'll remove the
-      dead UI.
-- [ ] **Enable leaked-password protection** — Authentication → Policies.
-- [ ] **Confirm whether "Confirm email" is on or off** — determines how exposed
-      sign-up currently is.
+### Phase 1 — done
+- [x] Public sign-ups disabled; dead UI removed.
+- [x] Minimum password length 12, character classes required, secure password
+      change on. Leaked-password protection is Pro-only and unavailable.
+- [x] "Confirm email" confirmed off — moot now that sign-up is closed.
 
-### Phase 2
-- [ ] **Confirm your Supabase plan** (free vs pro) so I can size the backup gap.
+### Phase 2 — one decision left
+- [x] Supabase plan confirmed: **free**.
+- [ ] **Decide how far to automate backups.** The manual export covers the
+      worst case; these close the remaining gaps, in cost order:
+      1. *Nothing more.* Export monthly when the amber nag appears. Zero code.
+         Gap: photos, and human memory.
+      2. *Photo export.* A second button that zips the Storage bucket via
+         signed URLs. Small. Closes the photo gap, still manual.
+      3. *Scheduled off-site copy.* Edge Function + `pg_cron` writing the JSON
+         (and photos) somewhere that isn't Supabase — needs a destination and
+         a credential from you. Closes everything, most moving parts.
+      My recommendation: **2 now, 3 when there are enough photos to hurt.**
 
 ### Phase 4
 - [ ] Decide: a **second Supabase project** for tests, or **local `supabase start`**

@@ -11,7 +11,11 @@ export type OutboxTable =
   | "body_metrics"
   | "mobility_logs"
   | "soreness_logs"
-  | "nutrition_logs";
+  | "nutrition_logs"
+  | "sleep_logs"
+  | "hydration_logs"
+  | "supplement_intakes"
+  | "readiness_logs";
 
 export type OutboxOp = "upsert" | "delete";
 
@@ -37,6 +41,13 @@ export const TABLE_PRIORITY: Record<OutboxTable, number> = {
   mobility_logs: 0,
   soreness_logs: 0,
   nutrition_logs: 0,
+  sleep_logs: 0,
+  hydration_logs: 0,
+  readiness_logs: 0,
+  // supplement_intakes references a supplement row, but supplements are
+  // created online in Settings — never queued — so there is no parent here
+  // waiting to be drained first.
+  supplement_intakes: 0,
 };
 
 function openDb(): Promise<IDBDatabase> {
