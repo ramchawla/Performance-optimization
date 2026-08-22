@@ -79,9 +79,20 @@ body {
   animation: sync-ping 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
 }
 
+/* Toasts rise from the tab bar they sit above. */
+@keyframes toast-in {
+  from { transform: translateY(0.5rem); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+.animate-toast-in {
+  animation: toast-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-sweep,
-  .animate-sync-ping {
+  .animate-sync-ping,
+  /* Opacity only — a toast still needs to *appear*, it just shouldn't slide. */
+  .animate-toast-in {
     animation: none;
   }
 }

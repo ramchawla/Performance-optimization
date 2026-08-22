@@ -71,10 +71,24 @@ export function useStravaSync() {
 }
 
 /** Last time Apple Health actually delivered anything — the only honest status there is. */
+/**
+ * REL-4's ingest heartbeat. The Shortcut can stop firing for reasons the app
+ * never observes — a revoked automation, a phone that never charged overnight —
+ * and the symptom is silence, indistinguishable from a quiet week. Unflagged,
+ * you'd find out months later as a hole in a chart.
+ */
+const HEARTBEAT_STALE_HOURS = 48;
+
 export function useHealthExportStatus() {
   return useQuery({
     queryKey: ["integration", "health_export", "status"],
-    queryFn: async (): Promise<{ lastMetricAt: string | null }> => {
+    // Staleness is derived here rather than in the component: reading the clock
+    // during render is impure, and React may render at any time it likes.
+    queryFn: async (): Promise<{
+      lastMetricAt: string | null;
+      hoursSince: number | null;
+      stale: boolean;
+    }> => {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("health_metrics")
@@ -84,7 +98,19 @@ export function useHealthExportStatus() {
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      return { lastMetricAt: data?.created_at ?? null };
+
+      const lastMetricAt = data?.created_at ?? null;
+      const hoursSince = lastMetricAt
+        ? (Date.now() - new Date(lastMetricAt).getTime()) / 3_600_000
+        : null;
+      return {
+        lastMetricAt,
+        hoursSince,
+        stale: hoursSince !== null && hoursSince > HEARTBEAT_STALE_HOURS,
+      };
     },
+    // Without this the answer is computed once and then frozen for the life of
+    // the tab, so a page left open would never cross the threshold.
+    refetchInterval: 15 * 60_000,
   });
 }

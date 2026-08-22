@@ -13,6 +13,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
+import { createZip } from "./zip";
 
 /**
  * Order matters: parents precede children, so a restore can replay the export
@@ -126,6 +127,91 @@ export async function collectExport(
     tables,
     errors,
     counts,
+  };
+}
+
+export interface PhotoArchive {
+  zip: Uint8Array<ArrayBuffer>;
+  filename: string;
+  photoCount: number;
+  /** Photos whose bytes couldn't be fetched, by storage path. */
+  errors: { path: string; message: string }[];
+}
+
+/**
+ * Progress photos live in Storage, not in a table, so the JSON export can't
+ * carry them — and on the free plan Supabase never backs Storage up. Without
+ * this they are the one category of data with no copy anywhere.
+ *
+ * Signed URLs rather than public ones because the bucket is private; they're
+ * used immediately and never persisted.
+ */
+export async function collectPhotos(
+  supabase: SupabaseClient<Database>,
+  onProgress?: (done: number, total: number) => void
+): Promise<PhotoArchive> {
+  const { data: rows, error } = await supabase
+    .from("progress_photos")
+    .select("*")
+    .order("taken_at", { ascending: true });
+  if (error) throw new Error(error.message);
+
+  const photos = rows ?? [];
+  const errors: PhotoArchive["errors"] = [];
+  const files: { name: string; data: Uint8Array }[] = [];
+
+  if (photos.length) {
+    const { data: signed, error: signErr } = await supabase.storage
+      .from("progress-photos")
+      .createSignedUrls(
+        photos.map((p) => p.storage_path),
+        // Long enough to download a few dozen photos on hotel wifi, short
+        // enough that a URL leaking out of a log is nearly worthless.
+        600
+      );
+    if (signErr) throw new Error(signErr.message);
+
+    const urlByPath = new Map(signed?.map((s) => [s.path, s.signedUrl]) ?? []);
+
+    // Sequential, not Promise.all: this runs on a phone, and firing fifty
+    // full-size image downloads at once is how you get memory pressure and
+    // truncated responses. Backups should be boring.
+    let done = 0;
+    for (const photo of photos) {
+      const url = urlByPath.get(photo.storage_path);
+      try {
+        if (!url) throw new Error("no signed URL returned");
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        // Name by date and pose so the archive is browsable without the
+        // manifest, and keep the original extension.
+        const ext = photo.storage_path.split(".").pop() ?? "jpg";
+        files.push({
+          name: `photos/${photo.taken_at.slice(0, 10)}-${photo.pose}-${photo.id.slice(0, 8)}.${ext}`,
+          data: new Uint8Array(await response.arrayBuffer()),
+        });
+      } catch (e) {
+        errors.push({
+          path: photo.storage_path,
+          message: e instanceof Error ? e.message : String(e),
+        });
+      }
+      onProgress?.(++done, photos.length);
+    }
+  }
+
+  // The rows travel with the bytes: pose, date and weight-at-the-time are what
+  // make a photo mean anything, and they'd be lost in a folder of JPEGs.
+  files.push({
+    name: "photos.json",
+    data: new TextEncoder().encode(JSON.stringify({ photos, errors }, null, 2)),
+  });
+
+  return {
+    zip: createZip(files),
+    filename: `performance-hub-photos-${new Date().toISOString().slice(0, 10)}.zip`,
+    photoCount: files.length - 1,
+    errors,
   };
 }
 

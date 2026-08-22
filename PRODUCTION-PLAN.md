@@ -160,19 +160,37 @@ photos have no provider-side copy whatsoever.
 Also folded in: the dead "Create account" path is gone from `SignInForm` now
 that public sign-up is off (Phase 1's last item).
 
-## Phase 3 — Reliability floor
+## Phase 3 — Reliability floor ✅ DONE *(except Sentry — needs your call)*
 
-1. `app/global-error.tsx`, `app/(main)/error.tsx`, `app/not-found.tsx` — real
-   recovery UI, not a stack trace.
-2. **Toast system** (`REL-2`) — a small context + hook, no dependency. Wire
-   every mutation's `onError` to it, preserving input per rule 7. This closes
-   the outstanding CLAUDE.md compliance gap.
-3. **`QueryClient` defaults** (`REL-3`): retry with backoff on network errors,
-   no retry on 4xx, sane `staleTime`, global error handler → toast.
-4. **Observability** (`REL-4`): Sentry for client and Edge Function errors,
-   plus an ingest heartbeat — if no `health_export` metric arrives for 48h,
-   surface it in Settings and notify. A silent integration failure is the
-   single most likely way this system rots.
+1. ✅ `app/global-error.tsx`, `app/(main)/error.tsx`, `app/not-found.tsx`.
+   `global-error` ships its own `<html>`/`<body>` and inline styles because by
+   definition the root layout failed — no fonts, no providers, no guarantee
+   Tailwind loaded. The in-app one keeps the tab bar, so an error is a
+   recoverable dead end rather than a white screen.
+2. ✅ **Toast system** (`REL-2`) — `components/ui/Toast.tsx`, no dependency.
+   Errors persist until dismissed (a failure that vanishes in 4s is a failure
+   you can miss, which defeats the point); success and info auto-expire.
+   Identical repeats dedupe.
+   Wired at the **`MutationCache`**, not per call site, so every failed write in
+   the app already surfaces and any future mutation is covered by default
+   rather than by remembering. Each error toast offers a Retry that re-runs the
+   mutation with its original variables. Closes the CLAUDE.md rule 7 gap.
+3. ✅ **`QueryClient` defaults** (`REL-3`): `staleTime` 60s, exponential retry
+   on network/5xx, **no retry on 4xx** (repeating a request the server called
+   malformed cannot change the answer), `refetchOnWindowFocus` off — right for
+   a desktop dashboard, wrong for a phone where every app-switch would refire
+   every query. Mutations never auto-retry: the offline-writable ones already
+   have the outbox, which retries with real backoff and dedupes on `client_id`.
+4. 🟡 **Observability** (`REL-4`) — half done.
+   - ✅ **Ingest heartbeat.** Settings flags Apple Health amber after 48h of
+     silence with the day count. This was the item most likely to matter: the
+     Shortcut can stop firing for reasons the app never observes, and silence
+     is indistinguishable from a quiet week until it's a hole in a chart.
+     Derived in the query, not in render — reading the clock during render is
+     impure and React may render whenever it likes — and refetched every 15
+     minutes so a long-open tab still crosses the threshold.
+   - ⬜ **Sentry.** Not installed: it's a new dependency (rule 9) and needs a
+     DSN from you. See Part 3.
 
 ## Phase 4 — Test harness
 

@@ -629,6 +629,7 @@ function IntegrationShell({
   name,
   status,
   connected,
+  stale,
   isLast,
   children,
 }: {
@@ -636,6 +637,8 @@ function IntegrationShell({
   name: string;
   status: string;
   connected: boolean;
+  /** Connected, but hasn't delivered in a while — the failure mode that rots silently. */
+  stale?: boolean;
   isLast?: boolean;
   children?: React.ReactNode;
 }) {
@@ -645,14 +648,22 @@ function IntegrationShell({
         <div className="flex min-w-0 items-center gap-2.5">
           <div
             className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] text-sm font-bold transition-colors duration-300 ${
-              connected ? "bg-accent/10 text-accent" : "bg-bg text-muted"
+              stale
+                ? "bg-amber-500/10 text-amber-400"
+                : connected
+                  ? "bg-accent/10 text-accent"
+                  : "bg-bg text-muted"
             }`}
           >
             {initials}
           </div>
           <div className="min-w-0">
             <div className="text-sm font-medium text-fg">{name}</div>
-            <div className={`mt-0.5 text-xs ${connected ? "text-accent" : "text-muted"}`}>{status}</div>
+            <div
+              className={`mt-0.5 text-xs ${stale ? "text-amber-400" : connected ? "text-accent" : "text-muted"}`}
+            >
+              {status}
+            </div>
           </div>
         </div>
         <div className="flex shrink-0 gap-1.5">{children}</div>
@@ -714,16 +725,22 @@ function StravaRow() {
 function AppleHealthRow() {
   const { data } = useHealthExportStatus();
   const last = data?.lastMetricAt;
+  const stale = data?.stale ?? false;
+  const hoursSince = data?.hoursSince ?? 0;
+
   return (
     <IntegrationShell
       initials="A"
       name="Apple Health"
       connected={!!last}
+      stale={stale}
       isLast
       status={
-        last
-          ? `Last delivery ${new Date(last).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
-          : "No data received yet"
+        !last
+          ? "No data received yet"
+          : stale
+            ? `Nothing for ${Math.floor(hoursSince / 24)} days — check the Shortcut`
+            : `Last delivery ${new Date(last).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
       }
     >
       <span className="self-center text-[11px] text-muted">via Shortcut</span>

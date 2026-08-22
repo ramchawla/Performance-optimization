@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { collectExport, exportFilename, totalRows } from "@/lib/export/collect";
+import { collectExport, collectPhotos, exportFilename, totalRows } from "@/lib/export/collect";
+
+function download(data: BlobPart, filename: string, type: string) {
+  const url = URL.createObjectURL(new Blob([data], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 /**
  * Supabase's free tier keeps 7 days of daily backups, has no point-in-time
@@ -29,6 +38,9 @@ export function DataExport() {
   const [mounted, setMounted] = useState(false);
   const [state, setState] = useState<"idle" | "working" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [photoState, setPhotoState] = useState<"idle" | "working" | "error">("idle");
+  const [photoMessage, setPhotoMessage] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   if (!mounted) {
     setMounted(true);
@@ -45,14 +57,7 @@ export function DataExport() {
 
       const bundle = await collectExport(supabase, userData.user.id);
 
-      const url = URL.createObjectURL(
-        new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" })
-      );
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = exportFilename(bundle);
-      a.click();
-      URL.revokeObjectURL(url);
+      download(JSON.stringify(bundle, null, 2), exportFilename(bundle), "application/json");
 
       const now = new Date().toISOString();
       localStorage.setItem(LAST_EXPORT_KEY, now);
@@ -71,6 +76,36 @@ export function DataExport() {
     } catch (e) {
       setState("error");
       setMessage(e instanceof Error ? e.message : "Export failed.");
+    }
+  }
+
+  async function handlePhotos() {
+    setPhotoState("working");
+    setPhotoMessage(null);
+    setProgress(null);
+    try {
+      const archive = await collectPhotos(createClient(), (done, total) =>
+        setProgress({ done, total })
+      );
+
+      if (archive.photoCount === 0 && archive.errors.length === 0) {
+        setPhotoState("idle");
+        setPhotoMessage("No photos to export yet.");
+        return;
+      }
+
+      download(archive.zip, archive.filename, "application/zip");
+      setPhotoState("idle");
+      setPhotoMessage(
+        archive.errors.length
+          ? `Downloaded ${archive.photoCount} photo(s); ${archive.errors.length} failed to fetch. Try again.`
+          : `Downloaded ${archive.photoCount} photo(s).`
+      );
+    } catch (e) {
+      setPhotoState("error");
+      setPhotoMessage(e instanceof Error ? e.message : "Photo export failed.");
+    } finally {
+      setProgress(null);
     }
   }
 
@@ -109,13 +144,34 @@ export function DataExport() {
         <p className={`mt-2 text-xs ${state === "error" ? "text-red-400" : "text-muted"}`}>{message}</p>
       )}
 
-      {/* ponytail: progress photos are Storage objects, not rows, so they are
-          not in this file. Backing them up needs a scheduled job that copies
-          the bucket somewhere else — see PRODUCTION-PLAN DATA-2. */}
-      <p className="mt-3 border-t border-surface-raised pt-3 text-[11px] leading-relaxed text-muted/70">
-        Progress photos aren&apos;t included — they live in file storage, not the database. Save
-        those from your phone separately for now.
-      </p>
+      <div className="mt-4 border-t border-surface-raised pt-4">
+        <p className="text-sm text-fg">Download photos</p>
+        <p className="mt-1 text-xs leading-relaxed text-muted">
+          Progress photos live in file storage, not the database, so they need their own file — and
+          the free plan doesn&apos;t back storage up at all. This zips them with a{" "}
+          <span className="font-mono">photos.json</span> listing each one&apos;s date, pose and
+          weight.
+        </p>
+
+        <button
+          type="button"
+          onClick={handlePhotos}
+          disabled={photoState === "working"}
+          className="mt-3 w-full rounded-xl border border-surface-raised px-3 py-2.5 text-sm font-semibold text-fg transition hover:bg-surface-raised active:scale-[0.985] disabled:opacity-50"
+        >
+          {photoState === "working"
+            ? progress
+              ? `Fetching ${progress.done}/${progress.total}…`
+              : "Collecting…"
+            : "Export my photos"}
+        </button>
+
+        {photoMessage && (
+          <p className={`mt-2 text-xs ${photoState === "error" ? "text-red-400" : "text-muted"}`}>
+            {photoMessage}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
