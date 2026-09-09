@@ -7,10 +7,18 @@ this one owns *making the thing trustworthy*.
 - **End state:** personal, built to last. No billing, onboarding funnel, ToS,
   or GDPR surface. "Production-grade" here means reliable, observable, backed
   up, and incapable of quietly losing data.
-- **AI layer:** server-side. An Edge Function assembles context, calls the
-  Claude API, renders in-app. Can run scheduled and can prompt for missing data.
-- **Testing:** unit (have) + integration against a real DB + Playwright E2E on
-  the flows that would ruin a day if broken.
+- **AI layer:** ~~server-side~~ **revised — no in-app layer.** Single user,
+  and a hosted Claude API key is a recurring bill for a feature only one
+  person uses. Insights happen conversationally instead: ask, and the
+  assistant queries the live Supabase project directly (it already has that
+  access) and reasons over the real numbers in that turn. No Edge Function, no
+  API key, no `insights` table, no scheduling, no cost. See Phase 5.
+- **Testing:** unit (have) + ~~integration against a real DB + Playwright
+  E2E~~ **revised — no automated integration/E2E harness.** Standing up a
+  local Postgres for this cost more (a Docker daemon idling on a laptop) than
+  it returned for one user. Risky changes get verified by hand against the
+  live project instead — which is what actually caught the RLS bypass and the
+  `water_ml`/alcohol bug in this same session. See Phase 4.
 
 ---
 
@@ -200,38 +208,51 @@ that public sign-up is off (Phase 1's last item).
    - ⬜ **Sentry.** Not installed: it's a new dependency (rule 9) and needs a
      DSN from you. See Part 3.
 
-## Phase 4 — Test harness
+## Phase 4 — Test harness ⤵️ downgraded
 
-1. **Integration tests** against a real Supabase test project (or local
-   `supabase start`). The bugs worth catching:
-   - RLS genuinely isolates two users (would have caught SEC-1),
-   - the outbox drains and is idempotent,
-   - snapshot rules hold — editing a food never rewrites past logs,
-   - deload sessions stay excluded from PRs and e1RM (rule 8).
-2. **Playwright E2E** on three flows: sign in; start → log sets → finish a
-   workout; search → log a food. Run against a seeded test DB.
-3. Extend `.github/workflows/ci.yml` (already runs typecheck/lint/test/build)
-   with the integration and E2E jobs and the test-DB secrets.
+Dropped: standing up Postgres locally (Docker Desktop idling was visibly
+slowing the laptop) or paying for a second hosted Supabase project, both to
+test a single-user app. The return didn't justify either cost.
 
-## Phase 5 — The AI insight layer *(the payoff)*
+What replaces it — **manual verification against the live project for any
+change that touches auth, money-shaped data, or a migration**, using the
+Supabase MCP tools already in this session:
+- Read the actual RLS policies / schema before changing them, not from memory.
+- After a migration, run the functional check as role `authenticated` with no
+  identity and confirm every user table returns 0 rows (this is exactly how
+  the RLS bypass and the Phase 6 policy rewrite were both verified).
+- Re-run the security/performance advisor after any RLS or schema change.
 
-1. **Context assembly** — reuse Phase 2's collector, adding derived features
-   the model shouldn't have to compute: rolling baselines, deltas vs 90-day
-   norms, streaks, adherence, and an explicit **inventory of what's missing**
-   so the model can ask rather than guess.
-2. **`supabase/functions/insights`** — verify JWT, assemble context, call the
-   Claude API, persist to a new `insights` table (so past reviews are readable
-   and cheap to re-open). Zod-validate the response shape.
-3. **`/insights` route** — weekly review, on-demand "analyse this", and
-   inline "I can't answer that without X" prompts that deep-link to the right
-   logging screen.
-4. **Scheduling** — weekly generation via `pg_cron` or a Vercel cron route.
-5. **Cost control** — cap context size, cache by data-version so an unchanged
-   week never re-bills.
+This is lighter than a CI harness, has zero standing cost, and already caught
+two real bugs this session that a superficial code review would have missed.
+The gap it accepts: nothing runs automatically on every push. For one user
+that trade is fine — reconsider only if a second person ever uses this app,
+since RLS isolation between real users is the one thing worth automating.
 
-*Prerequisite: an `ANTHROPIC_API_KEY` as an Edge Function secret. Phases 1–4
-should land first — an insight engine reading from an unreliable, unexportable,
-untested store is a fast way to trust wrong conclusions.*
+Unit tests (`lib/calc/`, `lib/export/`, `lib/sync/`) stay as they are —
+they're free, fast, and already ran to 108 passing throughout this work.
+
+## Phase 5 — Insights, on demand ⤵️ simplified
+
+Dropped: the server-side layer (Edge Function, `ANTHROPIC_API_KEY`,
+`insights` table, `pg_cron` scheduling). That design paid a recurring API
+bill and standing infrastructure for a feature exactly one person uses.
+
+**What replaces it:** ask, in this conversation. The assistant already has
+direct Supabase access — no separate credential, no app code — so "how's my
+training been trending" or "give me a weekly review" means:
+1. Query the live tables (or `lib/export/collect.ts`'s shape as a checklist of
+   what's available) for whatever the question needs.
+2. Reason over the real numbers in that turn, the same way this session
+   diagnosed the RLS bug and the water/alcohol mismatch directly against
+   production data.
+3. Say plainly what's missing rather than guessing — e.g. "no readiness
+   check-ins logged this week" instead of silently ignoring the gap.
+
+Nothing to build. This is a way of working, not a feature — revisit only if
+scheduled/unattended insights (something generated overnight without being
+asked) turn out to matter, which would be the actual justification for
+bringing back a server-side job.
 
 ## Phase 6 — Performance & product polish *(1, 2, 4 done)*
 
@@ -289,16 +310,12 @@ untested store is a fast way to trust wrong conclusions.*
          a credential from you. Closes everything, most moving parts.
       My recommendation: **2 now, 3 when there are enough photos to hurt.**
 
-### Phase 4
-- [ ] Decide: a **second Supabase project** for tests, or **local `supabase start`**
-      in CI. Local is free and hermetic; a real project catches
-      hosted-environment differences. My recommendation: local for CI, and I'll
-      note the difference where it matters.
+### Phase 4 — resolved
+- [x] No test infra to stand up. Verification against the live project is
+      manual, on-demand, and already in use.
 
-### Phase 5
-- [ ] **`ANTHROPIC_API_KEY`** as a Supabase Edge Function secret.
-- [ ] A rough **monthly spend ceiling** for AI calls so I can size context and
-      caching to it.
+### Phase 5 — resolved
+- [x] No key, no infra. Just ask for insights in conversation when you want them.
 
 ### Still outstanding from earlier
 - [ ] Strava secrets + callback domain.
@@ -316,7 +333,8 @@ The system is "productionized" for your purposes when:
 2. One command produces a complete, restorable export of everything.
 3. Any failed write is visible to you at the moment it fails, and recoverable.
 4. Any silent integration failure alerts within 48 hours.
-5. CI runs unit + integration + E2E on every push, and a red build blocks deploy.
+5. CI runs unit tests on every push, and a red build blocks deploy. (Integration/E2E
+   automation intentionally out of scope — see Phase 4.)
 6. Every screen has a real loading, empty, and error state.
-7. The AI layer can answer a question about your last 90 days and correctly
-   name what it doesn't know.
+7. Asked a question about the last 90 days, the assistant can answer it from
+   the live data and correctly name what it doesn't know.

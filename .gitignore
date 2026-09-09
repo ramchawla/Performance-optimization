@@ -46,3 +46,11 @@ HANDOFF.md
 .github/skills
 .impeccable
 .playwright-mcp
+
+# Claude Code & local tooling
+.agents/
+.codex/
+
+# Supabase CLI
+supabase/.branches/
+supabase/.temp/
