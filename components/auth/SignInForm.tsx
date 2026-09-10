@@ -3,8 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { MIN_PASSWORD_LENGTH } from "@/lib/auth";
 
-type Mode = "signin" | "reset";
+type Mode = "signin" | "signup" | "reset";
 
 const INPUT =
   "w-full rounded-xl border border-surface-raised bg-surface px-3 py-2 text-sm text-fg placeholder:text-muted focus:border-accent focus:outline-none";
@@ -12,10 +13,10 @@ const INPUT =
 /**
  * Password auth (magic link is off to avoid Supabase's email rate limit).
  *
- * There is no sign-up path: this is a single-user app and public sign-up is
- * disabled in Supabase. Rendering a "Create account" button that the server
- * will always reject is worse than not rendering it. Adding a second user
- * means creating them in the Supabase dashboard.
+ * Sign-up is temporarily reopened for beta traction-testing with friends
+ * (no ToS/legal layer exists yet — see PRODUCTION-PLAN.md). Must also be
+ * re-enabled in Supabase dashboard (Auth → Providers → Email), which this
+ * code has no control over.
  */
 export function SignInForm() {
   const router = useRouter();
@@ -46,6 +47,20 @@ export function SignInForm() {
       return;
     }
 
+    if (mode === "signup") {
+      if (password.length < MIN_PASSWORD_LENGTH)
+        return fail(`Use at least ${MIN_PASSWORD_LENGTH} characters.`);
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) return fail(error.message);
+      if (!data.session) {
+        setStatus("sent");
+        setMessage("Check your email to confirm your account.");
+        return;
+      }
+      router.push("/dashboard");
+      return;
+    }
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       // Supabase deliberately returns the same message for a wrong password
@@ -72,11 +87,13 @@ export function SignInForm() {
         <input
           type="password"
           required
-          // No minLength here on purpose — a minimum belongs on the screens
-          // that *create* a password. Enforcing it at sign-in would lock out
-          // an account whose existing password predates the rule.
-          autoComplete="current-password"
-          placeholder="password"
+          // No minLength on sign-in: a minimum belongs on the screens that
+          // *create* a password, and enforcing it here would lock out an
+          // account whose existing password predates the rule. Sign-up does
+          // enforce it, since that's where the password is created.
+          minLength={mode === "signup" ? MIN_PASSWORD_LENGTH : undefined}
+          autoComplete={mode === "signup" ? "new-password" : "current-password"}
+          placeholder={mode === "signup" ? `password (min ${MIN_PASSWORD_LENGTH} characters)` : "password"}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className={INPUT}
@@ -88,15 +105,27 @@ export function SignInForm() {
         disabled={status === "loading"}
         className="w-full rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-bg transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
       >
-        {status === "loading" ? "Working…" : mode === "signin" ? "Sign in" : "Send reset link"}
+        {status === "loading"
+          ? "Working…"
+          : mode === "signin"
+            ? "Sign in"
+            : mode === "signup"
+              ? "Create account"
+              : "Send reset link"}
       </button>
 
-      <div className="text-xs">
-        {mode === "signin" ? (
-          <button type="button" onClick={() => setMode("reset")} className="text-muted hover:text-fg">
-            Forgot password
-          </button>
-        ) : (
+      <div className="flex items-center justify-between text-xs">
+        {mode === "signin" && (
+          <>
+            <button type="button" onClick={() => setMode("signup")} className="text-accent">
+              Create account
+            </button>
+            <button type="button" onClick={() => setMode("reset")} className="text-muted hover:text-fg">
+              Forgot password
+            </button>
+          </>
+        )}
+        {mode !== "signin" && (
           <button type="button" onClick={() => setMode("signin")} className="text-accent">
             Back to sign in
           </button>
