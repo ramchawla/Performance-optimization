@@ -91,6 +91,35 @@ export function useCreateSupplement() {
   });
 }
 
+export function useUpdateSupplement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, input }: { id: string; input: SupplementInput }): Promise<Supplement> => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("supplements")
+        .update({
+          name: input.name,
+          brand: input.brand ?? null,
+          form: input.form ?? null,
+          dose_amount: input.doseAmount ?? null,
+          dose_unit: input.doseUnit ?? null,
+          purpose: input.purpose ?? null,
+          timing_rule: input.timingRule ?? null,
+          cost_per_serving: input.costPerServing ?? null,
+          notes: input.notes ?? null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["supplements"] }),
+  });
+}
+
 /** Retiring a supplement keeps its history — never delete, mark inactive. */
 export function useSetSupplementActive() {
   const qc = useQueryClient();

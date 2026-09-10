@@ -15,8 +15,10 @@ import {
   useSupplementAdherence,
   useSupplementIntakes,
   useSupplements,
+  useUpdateSupplement,
   type Supplement,
   type SupplementIntake,
+  type SupplementInput,
 } from "@/lib/queries/supplements";
 
 const FIELD =
@@ -28,36 +30,48 @@ function doseLabel(s: Pick<Supplement, "dose_amount" | "dose_unit">): string {
   return `${Number(s.dose_amount)}${s.dose_unit ? ` ${s.dose_unit}` : ""}`;
 }
 
-function AddSupplementForm({ onDone }: { onDone: () => void }) {
-  const create = useCreateSupplement();
-  const [name, setName] = useState("");
-  const [brand, setBrand] = useState("");
-  const [form, setForm] = useState("");
-  const [doseAmount, setDoseAmount] = useState("");
-  const [doseUnit, setDoseUnit] = useState("mg");
-  const [purpose, setPurpose] = useState("");
-  const [timingRule, setTimingRule] = useState("any");
+function SupplementForm({
+  initial,
+  title,
+  submitLabel,
+  pending,
+  error,
+  onSubmit,
+  onCancel,
+}: {
+  initial?: Supplement;
+  title: string;
+  submitLabel: string;
+  pending: boolean;
+  error: unknown;
+  onSubmit: (input: SupplementInput) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [brand, setBrand] = useState(initial?.brand ?? "");
+  const [form, setForm] = useState(initial?.form ?? "");
+  const [doseAmount, setDoseAmount] = useState(initial?.dose_amount !== null && initial?.dose_amount !== undefined ? String(initial.dose_amount) : "");
+  const [doseUnit, setDoseUnit] = useState(initial?.dose_unit ?? "mg");
+  const [purpose, setPurpose] = useState(initial?.purpose ?? "");
+  const [timingRule, setTimingRule] = useState(initial?.timing_rule ?? "any");
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
-    create.mutate(
-      {
-        name: name.trim(),
-        brand: brand.trim() || null,
-        form: form || null,
-        doseAmount: doseAmount ? Number(doseAmount) : null,
-        doseUnit: doseUnit || null,
-        purpose: purpose.trim() || null,
-        timingRule,
-      },
-      { onSuccess: onDone }
-    );
+    onSubmit({
+      name: name.trim(),
+      brand: brand.trim() || null,
+      form: form || null,
+      doseAmount: doseAmount ? Number(doseAmount) : null,
+      doseUnit: doseUnit || null,
+      purpose: purpose.trim() || null,
+      timingRule,
+    });
   }
 
   return (
     <form onSubmit={submit} className="animate-enter space-y-2.5 rounded-2xl border border-surface-raised bg-surface p-3.5">
-      <p className="font-display text-xs font-bold uppercase tracking-wide text-muted">Add to stack</p>
+      <p className="font-display text-xs font-bold uppercase tracking-wide text-muted">{title}</p>
       <input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (e.g. Creatine)" className={FIELD} />
       <input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Brand (optional)" className={FIELD} />
       <div className="grid grid-cols-2 gap-2">
@@ -125,23 +139,21 @@ function AddSupplementForm({ onDone }: { onDone: () => void }) {
       <div className="flex gap-2">
         <button
           type="submit"
-          disabled={create.isPending}
+          disabled={pending}
           className="min-h-11 flex-1 rounded-xl bg-accent px-3 py-2 font-display text-sm font-bold text-bg transition-transform duration-200 active:scale-[0.98] disabled:opacity-50"
         >
-          {create.isPending ? "Saving…" : "Add"}
+          {pending ? "Saving…" : submitLabel}
         </button>
         <button
           type="button"
-          onClick={onDone}
+          onClick={onCancel}
           className="min-h-11 rounded-xl border border-surface-raised px-3 py-2 text-sm text-fg transition-colors duration-200 hover:bg-surface-raised"
         >
           Cancel
         </button>
       </div>
-      {create.isError && (
-        <p className="text-xs text-red-400">
-          {create.error instanceof Error ? create.error.message : "Failed to save."}
-        </p>
+      {error !== null && error !== undefined && (
+        <p className="text-xs text-red-400">{error instanceof Error ? error.message : "Failed to save."}</p>
       )}
     </form>
   );
@@ -151,6 +163,7 @@ export default function SupplementsPage() {
   const [logDate, setLogDate] = useState(todayLocal);
   const [adding, setAdding] = useState(false);
   const [managing, setManaging] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const { data: supplements } = useSupplements(managing);
   const { data: intakes } = useSupplementIntakes(logDate);
@@ -158,6 +171,8 @@ export default function SupplementsPage() {
   const logIntake = useLogSupplementIntake();
   const deleteIntake = useDeleteIntake();
   const setActive = useSetSupplementActive();
+  const create = useCreateSupplement();
+  const update = useUpdateSupplement();
 
   const takenBySupplement = new Map<string, SupplementIntake>();
   for (const intake of intakes ?? []) {
@@ -202,7 +217,14 @@ export default function SupplementsPage() {
 
       {adding && (
         <div className="mt-2">
-          <AddSupplementForm onDone={() => setAdding(false)} />
+          <SupplementForm
+            title="Add to stack"
+            submitLabel="Add"
+            pending={create.isPending}
+            error={create.error}
+            onSubmit={(input) => create.mutate(input, { onSuccess: () => setAdding(false) })}
+            onCancel={() => setAdding(false)}
+          />
         </div>
       )}
 
@@ -210,6 +232,23 @@ export default function SupplementsPage() {
         {(supplements ?? []).map((s) => {
           const taken = takenBySupplement.get(s.id);
           const pct = adherence?.[s.id];
+
+          if (editingId === s.id) {
+            return (
+              <li key={s.id}>
+                <SupplementForm
+                  initial={s}
+                  title="Edit supplement"
+                  submitLabel="Save"
+                  pending={update.isPending}
+                  error={update.error}
+                  onSubmit={(input) => update.mutate({ id: s.id, input }, { onSuccess: () => setEditingId(null) })}
+                  onCancel={() => setEditingId(null)}
+                />
+              </li>
+            );
+          }
+
           return (
             <li
               key={s.id}
@@ -251,14 +290,22 @@ export default function SupplementsPage() {
                 )}
               </div>
 
-              {managing && (
+              <div className="mt-2 flex items-center gap-3">
                 <button
-                  onClick={() => setActive.mutate({ id: s.id, active: !s.active })}
-                  className="mt-2 font-mono text-[10px] text-muted hover:text-fg"
+                  onClick={() => setEditingId(s.id)}
+                  className="font-mono text-[10px] text-muted hover:text-fg"
                 >
-                  {s.active ? "Retire" : "Restore to stack"}
+                  Edit
                 </button>
-              )}
+                {managing && (
+                  <button
+                    onClick={() => setActive.mutate({ id: s.id, active: !s.active })}
+                    className="font-mono text-[10px] text-muted hover:text-fg"
+                  >
+                    {s.active ? "Retire" : "Restore to stack"}
+                  </button>
+                )}
+              </div>
             </li>
           );
         })}

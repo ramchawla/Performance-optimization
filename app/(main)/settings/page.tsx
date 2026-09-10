@@ -542,7 +542,20 @@ function ProfileForm({ profile }: { profile: NonNullable<ReturnType<typeof usePr
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div>
+        <label htmlFor="p-dob" className={PROFILE_LABEL}>
+          Born
+        </label>
+        <input
+          id="p-dob"
+          type="date"
+          value={draft.birthDate}
+          onChange={(e) => set("birthDate", e.target.value)}
+          className={PROFILE_FIELD}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
         <div>
           <label htmlFor="p-height" className={PROFILE_LABEL}>
             Height (cm)
@@ -553,18 +566,6 @@ function ProfileForm({ profile }: { profile: NonNullable<ReturnType<typeof usePr
             inputMode="numeric"
             value={draft.heightCm}
             onChange={(e) => set("heightCm", e.target.value)}
-            className={PROFILE_FIELD}
-          />
-        </div>
-        <div>
-          <label htmlFor="p-dob" className={PROFILE_LABEL}>
-            Born
-          </label>
-          <input
-            id="p-dob"
-            type="date"
-            value={draft.birthDate}
-            onChange={(e) => set("birthDate", e.target.value)}
             className={PROFILE_FIELD}
           />
         </div>
