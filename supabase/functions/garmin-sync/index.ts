@@ -24,7 +24,18 @@
 // populating, the raw payload is there to inspect and fix the key name.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { GarminConnect } from "npm:garmin-connect@^1";
+// garmin-connect is CommonJS (`module.exports = { GarminConnect, ... }`) — Deno's
+// npm: interop does NOT synthesize a named export for that shape (confirmed via a
+// live "does not provide an export named 'GarminConnect'" worker boot error), so
+// this has to come in as the default export and be destructured, not named-imported.
+// deno-types aren't reliable for this package's interop shape either, hence `any`.
+import GarminConnectPkg from "npm:garmin-connect@^1";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const GarminConnect: any = (GarminConnectPkg as any).GarminConnect;
+// `GarminConnect` above is a value, not usable in type position — this alias is
+// the type-position stand-in for it throughout the file.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type GarminClient = any;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -90,7 +101,7 @@ async function loadAccount(supabase: ReturnType<typeof serviceClient>, userId: s
   return data;
 }
 
-function clientFromStoredTokens(tokens: StoredTokens): GarminConnect {
+function clientFromStoredTokens(tokens: StoredTokens): GarminClient {
   const client = new GarminConnect({ username: "", password: "" });
   // Argument order is (oauth1, oauth2) per the library's documented example —
   // easy to get backwards since both are opaque token objects.
@@ -101,7 +112,7 @@ function clientFromStoredTokens(tokens: StoredTokens): GarminConnect {
 async function persistTokens(
   supabase: ReturnType<typeof serviceClient>,
   userId: string,
-  client: GarminConnect
+  client: GarminClient
 ) {
   const oauth2Token = (client as unknown as { client: { oauth2Token: unknown } }).client.oauth2Token;
   const oauth1Token = (client as unknown as { client: { oauth1Token: unknown } }).client.oauth1Token;
@@ -148,7 +159,7 @@ async function upsertMetric(
 /** One day's worth of Garmin pulls, extracted defensively — see file header. */
 async function syncDay(
   supabase: ReturnType<typeof serviceClient>,
-  client: GarminConnect,
+  client: GarminClient,
   userId: string,
   date: string
 ) {
@@ -209,7 +220,7 @@ async function syncDay(
 
 async function syncActivities(
   supabase: ReturnType<typeof serviceClient>,
-  client: GarminConnect,
+  client: GarminClient,
   userId: string
 ) {
   const activities = (await client.getActivities(0, 20)) as Array<Record<string, unknown>>;
@@ -314,7 +325,7 @@ Deno.serve(async (req: Request) => {
       const { data: profile } = await supabase.from("profiles").select("timezone").eq("user_id", userId).maybeSingle();
       const timezone = profile?.timezone ?? "America/Toronto";
 
-      let client: GarminConnect;
+      let client: GarminClient;
       try {
         client = clientFromStoredTokens({
           oauth1Token: JSON.parse(account.refresh_token),
