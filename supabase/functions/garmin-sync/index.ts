@@ -37,8 +37,24 @@ const GarminConnect: any = (GarminConnectPkg as any).GarminConnect;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type GarminClient = any;
 
+// Called via fetch() from the browser (lib/queries/integrations.ts), not just
+// curl/server-to-server — a POST with Content-Type: application/json triggers
+// a CORS preflight. Every response (OPTIONS included) needs these headers or
+// the browser blocks the request before it ever reaches the code below, which
+// surfaces to the user as a bare "Load failed" / "Failed to fetch" with no
+// status code to debug from. Confirmed live: curl bypasses CORS entirely and
+// looked fine while the browser was actually failing.
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+};
+
 const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+  });
 
 function serviceClient() {
   return createClient(
@@ -268,6 +284,8 @@ async function syncActivities(
 const SYNC_WINDOW_DAYS = 7; // personal-scale backfill window, mirrors strava-oauth's "one page covers any realistic gap"
 
 Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
+
   const url = new URL(req.url);
   const action = url.searchParams.get("action") ?? "status";
   const supabase = serviceClient();
