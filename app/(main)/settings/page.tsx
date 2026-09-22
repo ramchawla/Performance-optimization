@@ -16,6 +16,10 @@ import {
   useStravaDisconnect,
   useStravaStatus,
   useStravaSync,
+  useGarminConnect,
+  useGarminDisconnect,
+  useGarminStatus,
+  useGarminSync,
 } from "@/lib/queries/integrations";
 import { useQuery } from "@tanstack/react-query";
 
@@ -378,6 +382,7 @@ export default function Page() {
         <SectionLabel>Integrations</SectionLabel>
         <div className="overflow-hidden rounded-2xl border border-surface-raised bg-surface">
           <StravaRow />
+          <GarminRow />
           <AppleHealthRow />
         </div>
       </section>
@@ -715,6 +720,123 @@ function StravaRow() {
         </button>
       )}
     </IntegrationShell>
+  );
+}
+
+/**
+ * Garmin has no OAuth app-registration flow like Strava — "connect" means
+ * submitting the real Garmin username/password once, server-side (see
+ * garmin-sync's header comment for why that's not persisted). So this row
+ * expands into a small credential form instead of redirecting anywhere.
+ */
+function GarminRow() {
+  const { data: status, isLoading, error } = useGarminStatus();
+  const connect = useGarminConnect();
+  const disconnect = useGarminDisconnect();
+  const sync = useGarminSync();
+  const [showForm, setShowForm] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+
+  const connected = status?.connected ?? false;
+  const reauthRequired = sync.isError && sync.error instanceof Error && sync.error.message === "reauth_required";
+
+  const statusText = isLoading
+    ? "Checking…"
+    : error
+      ? "Status unavailable"
+      : reauthRequired
+        ? "Session expired — reconnect below"
+        : connected
+          ? sync.isSuccess
+            ? `Synced · ${sync.data.upserted} metrics, ${sync.data.activitiesImported} activities`
+            : "Connected"
+          : "Not connected";
+
+  function handleConnect(e: React.FormEvent) {
+    e.preventDefault();
+    connect.mutate(
+      { username, password },
+      {
+        onSuccess: () => {
+          setShowForm(false);
+          setUsername("");
+          setPassword("");
+        },
+      }
+    );
+  }
+
+  return (
+    <div className="border-b border-surface-raised">
+      <IntegrationShell
+        initials="G"
+        name="Garmin"
+        status={statusText}
+        connected={connected && !reauthRequired}
+        isLast
+      >
+        {connected && !reauthRequired ? (
+          <>
+            <button type="button" onClick={() => sync.mutate()} disabled={sync.isPending} className={SMALL_BTN}>
+              {sync.isPending ? "Syncing…" : "Sync now"}
+            </button>
+            <button
+              type="button"
+              onClick={() => disconnect.mutate()}
+              disabled={disconnect.isPending}
+              className={SMALL_BTN}
+            >
+              Disconnect
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={() => setShowForm((s) => !s)} className={SMALL_BTN}>
+            {showForm ? "Cancel" : reauthRequired ? "Reconnect" : "Connect"}
+          </button>
+        )}
+      </IntegrationShell>
+
+      {showForm && (
+        <form onSubmit={handleConnect} className="space-y-2 px-4 pb-3.5">
+          <input
+            type="email"
+            autoComplete="username"
+            placeholder="Garmin email"
+            aria-label="Garmin email"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 text-[15px] text-fg placeholder:text-muted focus-visible:border-accent focus-visible:outline-none"
+          />
+          <input
+            type="password"
+            autoComplete="current-password"
+            placeholder="Garmin password"
+            aria-label="Garmin password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 text-[15px] text-fg placeholder:text-muted focus-visible:border-accent focus-visible:outline-none"
+          />
+          <p className="text-[11px] leading-relaxed text-muted">
+            Sent once, server-side, to Garmin&apos;s own sign-in. Only the resulting session token is
+            stored — never the password. Accounts with two-factor authentication enabled aren&apos;t
+            supported yet.
+          </p>
+          <button
+            type="submit"
+            disabled={connect.isPending || !username || !password}
+            className="min-h-11 w-full rounded-lg bg-accent py-2.5 text-sm font-bold text-bg transition-transform duration-200 active:scale-[0.98] disabled:opacity-50"
+          >
+            {connect.isPending ? "Connecting…" : "Connect Garmin"}
+          </button>
+          {connect.isError && (
+            <p className="text-center text-xs text-red-400">
+              {connect.error instanceof Error ? connect.error.message : "Connection failed — try again."}
+            </p>
+          )}
+        </form>
+      )}
+    </div>
   );
 }
 

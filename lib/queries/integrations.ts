@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 
@@ -68,6 +69,132 @@ export function useStravaSync() {
       qc.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
+}
+
+// ---- Garmin -----------------------------------------------------------
+// Unlike Strava, Garmin has no OAuth redirect flow — "connect" posts the
+// user's Garmin username/password directly to garmin-sync, which logs in
+// server-side and never stores the raw password (see that function's header
+// comment). `sync` can return `reauth_required` if the stored session has
+// gone stale, which the UI treats as "not connected" rather than an error.
+
+export interface GarminStatus {
+  connected: boolean;
+  lastSyncAt: string | null;
+}
+
+export interface GarminSyncResult {
+  upserted: number;
+  activitiesFetched: number;
+  activitiesImported: number;
+  errors: string[];
+}
+
+async function callGarmin<T>(
+  action: string,
+  method: "GET" | "POST" = "GET",
+  body?: unknown
+): Promise<T> {
+  const supabase = createClient();
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Not signed in");
+
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/garmin-sync?action=${action}`,
+    {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    }
+  );
+  const responseBody = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const message = responseBody?.error === "reauth_required" ? "reauth_required" : responseBody?.error;
+    throw new Error(message ?? `Garmin request failed (${res.status})`);
+  }
+  return responseBody as T;
+}
+
+export function useGarminStatus() {
+  return useQuery({
+    queryKey: ["integration", "garmin", "status"],
+    queryFn: () => callGarmin<GarminStatus>("status"),
+    retry: false,
+  });
+}
+
+export function useGarminConnect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (creds: { username: string; password: string }) =>
+      callGarmin<{ ok: boolean; connected: boolean }>("connect", "POST", creds),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["integration", "garmin"] }),
+  });
+}
+
+export function useGarminDisconnect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => callGarmin<{ ok: boolean }>("disconnect", "POST"),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["integration", "garmin"] }),
+  });
+}
+
+export function useGarminSync() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => callGarmin<GarminSyncResult>("sync", "POST"),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["integration", "garmin"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+const AUTO_SYNC_STORAGE_KEY = "garmin_last_auto_sync";
+const AUTO_SYNC_INTERVAL_MS = 6 * 3_600_000;
+
+/**
+ * There is no server-side cron for Garmin (see TECHNICAL-DESIGN.md §7b) — this
+ * is what "automatic" means instead: fire a background sync from the client at
+ * most once per 6h, so opening the dashboard in the morning has last night's
+ * sleep/HRV without a manual tap. Best-effort by design — a failure here
+ * isn't worth a toast, the Settings "Sync now" button + its status text is the
+ * surface for real errors. localStorage is per-device, which is fine: any
+ * device opening the app keeps the data fresh.
+ */
+export function useGarminAutoSync() {
+  const { data: status } = useGarminStatus();
+  const sync = useGarminSync();
+
+  useEffect(() => {
+    if (!status?.connected) return;
+    let lastAuto = 0;
+    try {
+      lastAuto = Number(localStorage.getItem(AUTO_SYNC_STORAGE_KEY) ?? 0);
+    } catch {
+      // Storage unavailable (private mode, etc.) — just sync every mount.
+    }
+    if (Date.now() - lastAuto < AUTO_SYNC_INTERVAL_MS) return;
+
+    sync.mutate(undefined, {
+      onSettled: () => {
+        try {
+          localStorage.setItem(AUTO_SYNC_STORAGE_KEY, String(Date.now()));
+        } catch {
+          // Non-fatal — worst case this fires again next mount.
+        }
+      },
+    });
+    // Deliberately mount-triggered only, not a `sync` dependency — re-running
+    // whenever the mutation object identity changes would defeat the guard.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status?.connected]);
 }
 
 /** Last time Apple Health actually delivered anything — the only honest status there is. */

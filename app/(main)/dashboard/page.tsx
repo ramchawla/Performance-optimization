@@ -12,6 +12,7 @@ import { WeightTrendChart } from "@/components/charts/WeightTrendChart";
 import { VolumeBarChart } from "@/components/charts/VolumeBarChart";
 import { useDashboard } from "@/lib/queries/dashboard";
 import { useUpsertSleepLog } from "@/lib/queries/sleep";
+import { useGarminAutoSync } from "@/lib/queries/integrations";
 import { todayLocal } from "@/lib/datetime";
 
 function trendFor(slope: number | null): "up" | "down" | "flat" {
@@ -160,6 +161,7 @@ function TodayStrip() {
 
 export default function Page() {
   const { data, isLoading } = useDashboard();
+  useGarminAutoSync();
   const todayLabel = new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
   if (isLoading || !data) {
