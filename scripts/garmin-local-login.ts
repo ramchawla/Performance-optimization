@@ -21,52 +21,26 @@
  */
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-
-// Same CJS-interop caution as the edge function: garmin-connect's
-// `module.exports = { GarminConnect, ... }` shape resolves fine under
-// Node's CJS/ESM interop (unlike Deno's npm: specifier), but keeping the
-// fallback defensive costs nothing.
-const pkg = await import("garmin-connect");
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const GarminConnect = (pkg as any).GarminConnect ?? (pkg as any).default?.GarminConnect;
-
-async function prompt(question: string, hidden = false): Promise<string> {
-  const rl = createInterface({ input: stdin, output: stdout });
-  if (!hidden) {
-    const answer = await rl.question(question);
-    rl.close();
-    return answer.trim();
-  }
-  // Minimal masked input — good enough for a one-off local script, not a
-  // full terminal UI library for one prompt.
-  return new Promise((resolve) => {
-    stdout.write(question);
-    const onData = (char: Buffer) => {
-      const c = char.toString("utf8");
-      if (c === "\n" || c === "\r" || c === "") {
-        stdin.setRawMode?.(false);
-        stdin.removeListener("data", onData);
-        stdout.write("\n");
-        rl.close();
-        resolve(password);
-      } else if (c === "") {
-        process.exit(1);
-      } else if (c === "") {
-        password = password.slice(0, -1);
-      } else {
-        password += c;
-      }
-    };
-    let password = "";
-    stdin.setRawMode?.(true);
-    stdin.resume();
-    stdin.on("data", onData);
-  });
-}
+// A dynamic `await import(...)` here was a top-level await, which tsx
+// transforms to CJS by default (no "type": "module" in package.json) and
+// CJS output can't have top-level await. Static import avoids that — Node's
+// CJS/ESM interop resolves garmin-connect's `module.exports = {GarminConnect}`
+// shape fine here (unlike Deno's npm: specifier, which doesn't).
+import { GarminConnect } from "garmin-connect";
 
 async function main() {
-  const email = await prompt("Garmin email: ");
-  const password = await prompt("Garmin password: ", true);
+  // One shared interface for both questions — a fresh createInterface() per
+  // prompt() call lost the second answer entirely when stdin was piped
+  // (verified by hand: exit 0, "Logging in..." never printed, second answer
+  // came back empty). A single interface is also just the standard pattern.
+  const rl = createInterface({ input: stdin, output: stdout });
+  const email = (await rl.question("Garmin email: ")).trim();
+  // Plain, visible input rather than a hand-rolled masked-input reader —
+  // this runs on your own machine, and raw-mode terminal input handling is
+  // easy to get subtly wrong (backspace, non-TTY input, platform quirks) for
+  // a one-off script that's hard to test without a real interactive TTY.
+  const password = (await rl.question("Garmin password (visible while typing): ")).trim();
+  rl.close();
 
   const client = new GarminConnect({ username: email, password });
   console.error("Logging in...");
