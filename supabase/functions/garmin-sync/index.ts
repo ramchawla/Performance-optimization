@@ -193,19 +193,45 @@ async function syncDay(
       if (typeof steps === "number" && (await upsertMetric(supabase, userId, "steps", date, steps, "count", { steps }, "larger"))) upserted++;
     },
     async () => {
-      const duration = await client.getSleepDuration(day);
-      const seconds = (duration?.hours ?? 0) * 3600 + (duration?.minutes ?? 0) * 60;
-      if (seconds > 0 && (await upsertMetric(supabase, userId, "sleep_duration_s", date, seconds, "s", duration))) upserted++;
-    },
-    async () => {
-      const sleep = await client.getSleepData(day);
-      const dto = (sleep as Record<string, unknown> | undefined)?.dailySleepDTO as Record<string, unknown> | undefined;
-      const deep = dto?.deepSleepSeconds;
-      const light = dto?.lightSleepSeconds;
-      const rem = dto?.remSleepSeconds;
-      if (typeof deep === "number") await upsertMetric(supabase, userId, "sleep_deep_s", date, deep, "s", sleep);
-      if (typeof light === "number") await upsertMetric(supabase, userId, "sleep_light_s", date, light, "s", sleep);
-      if (typeof rem === "number") await upsertMetric(supabase, userId, "sleep_rem_s", date, rem, "s", sleep);
+      // One getSleepData call feeds every sleep metric — getSleepDuration() just
+      // re-fetches this same payload internally. The full payload is kept as `raw`
+      // on the sleep_duration_s row only; the Sleep page reads per-night detail
+      // (hypnogram, overnight HR/HRV/respiration, score qualifiers) from it.
+      const sleep = (await client.getSleepData(day)) as Record<string, unknown> | undefined;
+      const dto = sleep?.dailySleepDTO as Record<string, unknown> | undefined;
+      const scores = dto?.sleepScores as Record<string, Record<string, unknown>> | undefined;
+      const need = dto?.sleepNeed as Record<string, unknown> | undefined;
+      // Garmin's *Local timestamps are local wall-clock encoded as UTC epoch ms, so
+      // subtracting the wake-date's UTC midnight gives seconds from local midnight
+      // (negative = the previous evening). Offsets, not epochs: health_metrics.value
+      // is numeric(12,3), which can't hold a 10-digit epoch.
+      const midnight = Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +date.slice(8, 10));
+      const offset = (ts: unknown) => (typeof ts === "number" ? (ts - midnight) / 1000 : undefined);
+      const times60 = (v: unknown) => (typeof v === "number" ? v * 60 : undefined);
+
+      const fields: Array<[string, unknown, string]> = [
+        ["sleep_duration_s", dto?.sleepTimeSeconds, "s"],
+        ["sleep_deep_s", dto?.deepSleepSeconds, "s"],
+        ["sleep_light_s", dto?.lightSleepSeconds, "s"],
+        ["sleep_rem_s", dto?.remSleepSeconds, "s"],
+        ["sleep_awake_s", dto?.awakeSleepSeconds, "s"],
+        ["sleep_awake_count", dto?.awakeCount, "count"],
+        ["sleep_score", scores?.overall?.value, "score"],
+        ["sleep_need_s", times60(need?.actual), "s"],
+        ["sleep_resp_avg", dto?.averageRespirationValue, "brpm"],
+        ["sleep_stress_avg", dto?.avgSleepStress, "score"],
+        ["sleep_hr_avg", dto?.avgHeartRate, "bpm"],
+        ["body_battery_gain", sleep?.bodyBatteryChange, "score"],
+        ["sleep_start_offset_s", offset(dto?.sleepStartTimestampLocal), "s"],
+        ["sleep_end_offset_s", offset(dto?.sleepEndTimestampLocal), "s"],
+      ];
+      // A night with no recorded sleep comes back with null/0 totals — write nothing.
+      if (typeof dto?.sleepTimeSeconds !== "number" || dto.sleepTimeSeconds <= 0) return;
+      for (const [metric, value, unit] of fields) {
+        // The payload is ~18KB; keep one copy per night, on the canonical duration row.
+        const raw = metric === "sleep_duration_s" ? sleep : null;
+        if (typeof value === "number" && (await upsertMetric(supabase, userId, metric, date, value, unit, raw))) upserted++;
+      }
     },
     async () => {
       const hr = await client.getHeartRate(day);
@@ -216,9 +242,20 @@ async function syncDay(
       // Undocumented endpoint (garmin-connect npm has no high-level HRV method) —
       // path verified against cyberjunky/python-garminconnect's garmin_connect_hrv_url.
       const hrv = await client.get(`${api}/hrv-service/hrv/${date}`, {});
-      const avg = (hrv as Record<string, unknown> | undefined)?.hrvSummary as Record<string, unknown> | undefined;
-      const value = avg?.lastNightAvg;
-      if (typeof value === "number" && (await upsertMetric(supabase, userId, "hrv_ms", date, value, "ms", hrv))) upserted++;
+      const summary = (hrv as Record<string, unknown> | undefined)?.hrvSummary as Record<string, unknown> | undefined;
+      // baseline is null until Garmin finishes its ~3-week onboarding; key names
+      // (balancedLow/balancedUpper) per python-garminconnect, unverified until then.
+      const baseline = summary?.baseline as Record<string, unknown> | null | undefined;
+      const fields: Array<[string, unknown]> = [
+        ["hrv_ms", summary?.lastNightAvg],
+        ["hrv_weekly_avg", summary?.weeklyAvg],
+        ["hrv_baseline_low", baseline?.balancedLow],
+        ["hrv_baseline_high", baseline?.balancedUpper],
+      ];
+      for (const [metric, value] of fields) {
+        const raw = metric === "hrv_ms" ? hrv : null; // one payload copy per night
+        if (typeof value === "number" && (await upsertMetric(supabase, userId, metric, date, value, "ms", raw))) upserted++;
+      }
     },
     async () => {
       // Undocumented — path verified against garmin_connect_daily_stress_url.
@@ -289,6 +326,8 @@ async function syncActivities(
 // ---- handler ---------------------------------------------------------------
 
 const SYNC_WINDOW_DAYS = 7; // personal-scale backfill window, mirrors strava-oauth's "one page covers any realistic gap"
+const MAX_CHUNK_DAYS = 14;
+const MAX_BACKFILL_DAYS = 90;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS_HEADERS });
@@ -426,7 +465,36 @@ Deno.serve(async (req: Request) => {
       const errors: string[] = [];
       let upserted = 0;
 
-      for (let daysAgo = 0; daysAgo < SYNC_WINDOW_DAYS; daysAgo++) {
+      // TEMP diagnostic (steps lag investigation) — remove once root cause is known.
+      try {
+        const today = localDateString(0, timezone);
+        const profile = await client.getUserProfile();
+        const summary = await client.get(
+          `${client.url.GC_API}/usersummary-service/usersummary/daily/${profile?.displayName}`,
+          { params: { calendarDate: today } }
+        );
+        const statsSteps = await client.getSteps(new Date(`${today}T12:00:00Z`));
+        console.log("DIAG steps", JSON.stringify({
+          today,
+          statsSteps,
+          summaryTotalSteps: summary?.totalSteps,
+          lastSyncTimestampGMT: summary?.lastSyncTimestampGMT,
+          wellnessEndTimeLocal: summary?.wellnessEndTimeLocal,
+        }));
+      } catch (err) {
+        console.log("DIAG steps failed:", err instanceof Error ? err.message : String(err));
+      }
+
+      // ?days/?offset let Settings backfill history in chunks small enough to finish
+      // inside one invocation's wall-clock limit (~5 Garmin calls per day).
+      const clampInt = (v: string | null, lo: number, hi: number, dflt: number) => {
+        const n = Number.parseInt(v ?? "", 10);
+        return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
+      };
+      const days = clampInt(url.searchParams.get("days"), 1, MAX_CHUNK_DAYS, SYNC_WINDOW_DAYS);
+      const startOffset = clampInt(url.searchParams.get("offset"), 0, MAX_BACKFILL_DAYS, 0);
+
+      for (let daysAgo = startOffset; daysAgo < startOffset + days; daysAgo++) {
         const date = localDateString(daysAgo, timezone);
         const result = await syncDay(supabase, client, userId, date);
         upserted += result.upserted;
@@ -434,17 +502,22 @@ Deno.serve(async (req: Request) => {
       }
 
       let activityResult = { fetched: 0, imported: 0, errors: [] as string[] };
-      try {
-        activityResult = await syncActivities(supabase, client, userId);
-      } catch (err) {
-        errors.push(err instanceof Error ? err.message : String(err));
+      // Backfill chunks (offset > 0) skip activities: the latest-20 page is the same every call.
+      if (startOffset === 0) {
+        try {
+          activityResult = await syncActivities(supabase, client, userId);
+        } catch (err) {
+          errors.push(err instanceof Error ? err.message : String(err));
+        }
       }
       errors.push(...activityResult.errors);
 
-      // Nothing landed and everything errored — near-certainly an expired
-      // session (every call above independently hits the same auth check)
-      // rather than seven days of coincidental per-metric failures.
-      if (upserted === 0 && activityResult.imported === 0 && errors.length > 0) {
+      // Nothing landed, everything errored, AND the errors look like auth — an
+      // expired session. Without the auth check this fired for code bugs (Date /
+      // relative-URL errors) and for backfill days before the watch existed, both
+      // of which told the user to reconnect when reconnecting couldn't help.
+      const looksLikeAuth = errors.some((e) => /\b(401|403)\b|unauthori[sz]ed|forbidden/i.test(e));
+      if (upserted === 0 && activityResult.imported === 0 && errors.length > 0 && looksLikeAuth) {
         // reauth_required discards `errors` from the client response, which
         // made this heuristic firing for a NON-auth reason undiagnosable —
         // log what actually happened before returning the generic signal.
