@@ -17,6 +17,7 @@ import {
   useStravaStatus,
   useStravaSync,
   useGarminConnect,
+  useGarminConnectWithTokens,
   useGarminDisconnect,
   useGarminStatus,
   useGarminSync,
@@ -732,11 +733,15 @@ function StravaRow() {
 function GarminRow() {
   const { data: status, isLoading, error } = useGarminStatus();
   const connect = useGarminConnect();
+  const connectWithTokens = useGarminConnectWithTokens();
   const disconnect = useGarminDisconnect();
   const sync = useGarminSync();
   const [showForm, setShowForm] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showTokenForm, setShowTokenForm] = useState(false);
+  const [tokenJson, setTokenJson] = useState("");
+  const [tokenError, setTokenError] = useState<string | null>(null);
 
   const connected = status?.connected ?? false;
   const reauthRequired = sync.isError && sync.error instanceof Error && sync.error.message === "reauth_required";
@@ -752,6 +757,32 @@ function GarminRow() {
             ? `Synced · ${sync.data.upserted} metrics, ${sync.data.activitiesImported} activities`
             : "Connected"
           : "Not connected";
+
+  function handleConnectWithTokens(e: React.FormEvent) {
+    e.preventDefault();
+    setTokenError(null);
+    let parsed: { oauth1Token?: unknown; oauth2Token?: unknown };
+    try {
+      parsed = JSON.parse(tokenJson);
+    } catch {
+      setTokenError("Not valid JSON — paste exactly what the script printed.");
+      return;
+    }
+    if (!parsed.oauth1Token || !parsed.oauth2Token) {
+      setTokenError('Expected {"oauth1Token": ..., "oauth2Token": ...}.');
+      return;
+    }
+    connectWithTokens.mutate(
+      { oauth1Token: parsed.oauth1Token, oauth2Token: parsed.oauth2Token },
+      {
+        onSuccess: () => {
+          setShowTokenForm(false);
+          setShowForm(false);
+          setTokenJson("");
+        },
+      }
+    );
+  }
 
   function handleConnect(e: React.FormEvent) {
     e.preventDefault();
@@ -833,6 +864,50 @@ function GarminRow() {
             <p className="text-center text-xs text-red-400">
               {connect.error instanceof Error ? connect.error.message : "Connection failed — try again."}
             </p>
+          )}
+
+          {/* Fallback for when the request above 429s from this function's own
+              IP (confirmed happening — Garmin's token-exchange endpoint blocks
+              Supabase's egress but works fine from a home network). Run
+              scripts/garmin-local-login.ts locally and paste its output here
+              instead of retrying the same blocked path. */}
+          <button
+            type="button"
+            onClick={() => setShowTokenForm((s) => !s)}
+            className="w-full text-center text-[11px] text-muted underline decoration-dotted underline-offset-2 hover:text-fg"
+          >
+            {showTokenForm ? "Hide advanced option" : "Getting a rate-limit error? Advanced: paste session tokens"}
+          </button>
+
+          {showTokenForm && (
+            <div className="space-y-2 border-t border-surface-raised pt-3">
+              <p className="text-[11px] leading-relaxed text-muted">
+                Run <code className="rounded bg-bg px-1 py-0.5">npx tsx scripts/garmin-local-login.ts</code>{" "}
+                on your own computer (works around Garmin blocking the cloud server specifically for
+                first-time login) and paste what it prints below.
+              </p>
+              <textarea
+                value={tokenJson}
+                onChange={(e) => setTokenJson(e.target.value)}
+                placeholder='{"oauth1Token": ..., "oauth2Token": ...}'
+                rows={4}
+                className="w-full rounded-lg border border-surface-raised bg-bg px-3 py-2 font-mono text-xs text-fg placeholder:text-muted focus-visible:border-accent focus-visible:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleConnectWithTokens}
+                disabled={connectWithTokens.isPending || !tokenJson.trim()}
+                className="min-h-11 w-full rounded-lg border border-surface-raised py-2.5 text-sm font-bold text-fg transition-colors duration-150 hover:border-accent disabled:opacity-50"
+              >
+                {connectWithTokens.isPending ? "Connecting…" : "Use these tokens"}
+              </button>
+              {(tokenError || connectWithTokens.isError) && (
+                <p className="text-center text-xs text-red-400">
+                  {tokenError ??
+                    (connectWithTokens.error instanceof Error ? connectWithTokens.error.message : "Failed — try again.")}
+                </p>
+              )}
+            </div>
           )}
         </form>
       )}

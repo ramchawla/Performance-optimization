@@ -137,6 +137,16 @@ export function useGarminConnect() {
   });
 }
 
+/** Fallback for when `connect` 429s from this function's IP — see scripts/garmin-local-login.ts. */
+export function useGarminConnectWithTokens() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tokens: { oauth1Token: unknown; oauth2Token: unknown }) =>
+      callGarmin<{ ok: boolean; connected: boolean }>("connect-with-tokens", "POST", tokens),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["integration", "garmin"] }),
+  });
+}
+
 export function useGarminDisconnect() {
   const qc = useQueryClient();
   return useMutation({

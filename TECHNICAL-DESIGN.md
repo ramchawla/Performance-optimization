@@ -132,6 +132,10 @@ The last four were added in migration `0006`. The test is not "could this be wri
 
 **What NOT to build (v1):** no MFA support, no server-side cron (see above), no attempt to reconcile a Garmin-sourced activity against a Strava-sourced one if both are ever connected simultaneously (they weren't, at the time this was built — `integration_accounts` had no Strava row). If that changes, dedup by `(user_id, started_at, activity)` proximity is the likely approach, not attempted here.
 
+**Known issue — Garmin's OAuth token-exchange endpoint 429s from Supabase's egress IPs.** Discovered 2026-09-22/23: `connect` consistently fails with a 429 from `connectapi.garmin.com/oauth-service/oauth/preauthorized`, persisting across 30+ hours and multiple isolated attempts — ruling out a simple time-decaying rate limit. Diagnosed with a raw network probe (`?action=debug-network`, no auth required, no credentials touched — three bare requests to the SSO/OAuth endpoints): a request to the *exact same endpoint* with no real login ticket got a clean 400, and the account logs in fine from a home network, which together point at Supabase's IP specifically being flagged for this endpoint, not the account or a blanket domain block. Confirmed `sync` never exercises this endpoint at all (`loadToken()`, not `login()`) — only the one-time `connect` step is affected.
+
+Fix: `scripts/garmin-local-login.ts` runs the same login flow locally (unflagged IP), prints the resulting OAuth1/OAuth2 token pair, and the Settings UI has an advanced "paste session tokens" fallback (`connect-with-tokens` action) that stores them directly, skipping the blocked step entirely. If this endpoint is ever unblocked for Supabase's IPs, plain `connect` should be preferred again — this is a workaround for a live block, not the intended primary path.
+
 ## 8. Security Posture
 
 - RLS on every table; `integration_accounts` deny-all except service role (see schema §12 comment).

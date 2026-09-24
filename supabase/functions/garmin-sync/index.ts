@@ -290,6 +290,39 @@ Deno.serve(async (req: Request) => {
   const action = url.searchParams.get("action") ?? "status";
   const supabase = serviceClient();
 
+  // No auth required: read-only probes against Garmin's own public endpoints,
+  // no user data or credentials touched. Kept ahead of requireUser purely so
+  // it's reachable for diagnosis without a live user session on hand.
+  if (action === "debug-network") {
+    const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+    const probe = async (label: string, target: string) => {
+      try {
+        const res = await fetch(target, { headers: { "User-Agent": UA }, redirect: "manual" });
+        const body = await res.text();
+        return {
+          label,
+          url: target,
+          status: res.status,
+          headers: Object.fromEntries(res.headers.entries()),
+          bodySnippet: body.slice(0, 300),
+        };
+      } catch (err) {
+        return { label, url: target, error: err instanceof Error ? err.message : String(err) };
+      }
+    };
+
+    const results = await Promise.all([
+      probe("connectapi_root", "https://connectapi.garmin.com/"),
+      probe(
+        "oauth_preauthorized_bogus_ticket",
+        "https://connectapi.garmin.com/oauth-service/oauth/preauthorized?ticket=diagnostic-bogus-ticket&login-url=https://sso.garmin.com/sso/embed&accepts-mfa-tokens=true"
+      ),
+      probe("sso_embed", "https://sso.garmin.com/sso/embed?clientId=GarminConnect&locale=en"),
+    ]);
+
+    return json({ results });
+  }
+
   const userId = await requireUser(req);
   if (!userId) return json({ error: "unauthorized" }, 401);
 
@@ -327,6 +360,32 @@ Deno.serve(async (req: Request) => {
           provider: "garmin",
           access_token: JSON.stringify((client as unknown as { client: { oauth2Token: unknown } }).client.oauth2Token),
           refresh_token: JSON.stringify((client as unknown as { client: { oauth1Token: unknown } }).client.oauth1Token),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,provider" }
+      );
+      if (upsertErr) throw upsertErr;
+
+      return json({ ok: true, connected: true });
+    }
+
+    if (action === "connect-with-tokens") {
+      // Fallback for when `connect` 429s from this function's own IP (see
+      // scripts/garmin-local-login.ts) — the login already happened
+      // elsewhere; this just stores the resulting token pair. No password
+      // ever touches this action, so there's nothing here to validate a
+      // login with — a malformed/expired token pair just fails on the next
+      // `sync` the normal way (reauth_required).
+      const body = await req.json().catch(() => ({}));
+      const { oauth1Token, oauth2Token } = body as { oauth1Token?: unknown; oauth2Token?: unknown };
+      if (!oauth1Token || !oauth2Token) return json({ error: "oauth1Token and oauth2Token are required" }, 400);
+
+      const { error: upsertErr } = await supabase.from("integration_accounts").upsert(
+        {
+          user_id: userId,
+          provider: "garmin",
+          access_token: JSON.stringify(oauth2Token),
+          refresh_token: JSON.stringify(oauth1Token),
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id,provider" }
