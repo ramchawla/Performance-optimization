@@ -104,3 +104,32 @@ export function useDeleteCardio() {
     },
   });
 }
+
+export interface ActivityDetail {
+  session: CardioSession;
+  /** Garmin payloads keyed by part (summary, detail, splits, hr_zones, sets); empty for non-Garmin sessions. */
+  parts: Partial<Record<"summary" | "detail" | "splits" | "hr_zones" | "sets", unknown>>;
+}
+
+/** One session plus, for Garmin activities, its stored per-activity payloads (garmin_payloads, 0014). */
+export function useActivityDetail(id: string) {
+  return useQuery({
+    queryKey: ["cardio", "detail", id],
+    queryFn: async (): Promise<ActivityDetail> => {
+      const supabase = createClient();
+      const { data: session, error } = await supabase.from("cardio_sessions").select("*").eq("id", id).single();
+      if (error) throw error;
+      if (session.source !== "garmin" || !session.external_id) return { session, parts: {} };
+
+      const kinds = (["summary", "detail", "splits", "hr_zones", "sets"] as const).map((p) => `activity_${p}:${session.external_id}`);
+      const { data: payloads, error: pErr } = await supabase.from("garmin_payloads").select("kind, payload").in("kind", kinds);
+      if (pErr) throw pErr;
+      const parts: ActivityDetail["parts"] = {};
+      for (const p of payloads) {
+        const part = p.kind.slice("activity_".length, p.kind.indexOf(":")) as keyof ActivityDetail["parts"];
+        parts[part] = p.payload;
+      }
+      return { session, parts };
+    },
+  });
+}

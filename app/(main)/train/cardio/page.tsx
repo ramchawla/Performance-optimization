@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { TrainSubnav } from "@/components/train/TrainSubnav";
 import { formatDate, formatTime, localDateOf, nowTimeInput, todayLocal } from "@/lib/datetime";
 import {
@@ -214,7 +215,15 @@ export default function CardioPage() {
                   {s.avg_hr_bpm !== null && <span>{s.avg_hr_bpm} bpm avg</span>}
                   {s.perceived_effort !== null && <span>RPE {s.perceived_effort}</span>}
                   {s.source === "strava" && <span className="text-muted/60">Strava</span>}
+                  {s.training_effect_aerobic !== null && <span>TE {s.training_effect_aerobic.toFixed(1)}</span>}
+                  {s.training_load !== null && <span>load {Math.round(s.training_load)}</span>}
+                  {s.calories_kcal !== null && <span>{s.calories_kcal} kcal</span>}
                 </div>
+                {s.source === "garmin" && (
+                  <Link href={`/train/cardio/${s.id}`} className="mt-1.5 inline-block font-mono text-[11px] text-accent">
+                    Details ›
+                  </Link>
+                )}
                 {s.notes && <p className="mt-1 truncate text-xs text-muted">{s.notes}</p>}
                 {s.source === "manual" && (
                   <button
