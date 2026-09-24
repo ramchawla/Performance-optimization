@@ -167,12 +167,14 @@ export function useGarminSync() {
 }
 
 const AUTO_SYNC_STORAGE_KEY = "garmin_last_auto_sync";
-const AUTO_SYNC_INTERVAL_MS = 6 * 3_600_000;
+// ponytail: 1h throttle — each sync is ~43 Garmin calls on an unofficial API that has
+// already IP-flagged us once; per-load with no throttle risks getting the account flagged.
+const AUTO_SYNC_INTERVAL_MS = 3_600_000;
 
 /**
  * There is no server-side cron for Garmin (see TECHNICAL-DESIGN.md §7b) — this
  * is what "automatic" means instead: fire a background sync from the client at
- * most once per 6h, so opening the dashboard in the morning has last night's
+ * most once per hour, on app load (mounted in the (main) layout), so opening the app in the morning has last night's
  * sleep/HRV without a manual tap. Best-effort by design — a failure here
  * isn't worth a toast, the Settings "Sync now" button + its status text is the
  * surface for real errors. localStorage is per-device, which is fine: any

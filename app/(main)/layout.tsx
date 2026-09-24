@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SyncStatus } from "@/components/sync/SyncStatus";
+import { useGarminAutoSync } from "@/lib/queries/integrations";
 
 const NAV = [
   { href: "/dashboard", label: "Dash" },
@@ -15,6 +16,7 @@ const NAV = [
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  useGarminAutoSync();
   return (
     <div className="min-h-screen bg-bg pb-24">
       <SyncStatus />
