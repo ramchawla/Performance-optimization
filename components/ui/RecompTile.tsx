@@ -21,13 +21,13 @@ export function RecompTile({ label, value, trend, favorable, watch = false, spar
 
   return (
     <div
-      className={`animate-enter relative overflow-hidden rounded-2xl border p-3 backdrop-blur-xl transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:-translate-y-1 active:translate-y-0 active:scale-[0.97] active:duration-150 ${
+      className={`animate-enter relative overflow-hidden rounded-2xl border p-3 backdrop-blur-xl ${
         favorable
-          ? "border-accent/40 bg-accent/[0.07] shadow-[0_0_20px_-10px_var(--accent)] hover:shadow-[0_12px_28px_-14px_var(--accent)]"
+          ? "border-accent/40 bg-accent/[0.07] shadow-[0_0_20px_-10px_var(--accent)]"
           : watch
             ? "border-amber-400/30 bg-amber-400/[0.05]"
             : "border-white/10 bg-white/[0.04]"
-      } ${wide ? "col-span-2" : ""}`}
+      } ${wide ? "col-span-2" : ""} h-full`}
     >
       {data.length > 1 && (
         <div className="absolute inset-0 opacity-25">
