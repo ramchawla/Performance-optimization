@@ -69,3 +69,21 @@ export function useGarminToday() {
     },
   });
 }
+
+/** One stored Garmin payload (garmin_payloads, 0014) — for detail the scalar metrics don't carry. */
+export function useGarminPayload(kind: string, date: string) {
+  return useQuery({
+    queryKey: ["garmin-payload", kind, date],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("garmin_payloads")
+        .select("payload")
+        .eq("kind", kind)
+        .eq("payload_date", date)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.payload ?? null;
+    },
+  });
+}

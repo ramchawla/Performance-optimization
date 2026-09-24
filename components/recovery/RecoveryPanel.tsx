@@ -4,13 +4,30 @@ import { baseline } from "@/lib/calc/sleep";
 import { recoveryScore, type RecoveryBand } from "@/lib/calc/recovery";
 import { todayLocal } from "@/lib/datetime";
 import { useSleepTrend, type SleepMetric } from "@/lib/queries/sleep";
-import { useGarminToday } from "@/lib/queries/today";
+import { useGarminPayload, useGarminToday } from "@/lib/queries/today";
 
 const BAND_STYLE: Record<RecoveryBand, { label: string; className: string; advice: string }> = {
   high: { label: "Recovered", className: "text-accent", advice: "Good day to push intensity." },
   normal: { label: "Normal", className: "text-fg", advice: "Train as planned." },
   low: { label: "Under-recovered", className: "text-rose-300", advice: "Favour volume over intensity, or take it easy." },
 };
+
+// Verified against a live training_readiness payload (2026-09-24): each factor is
+// <name>FactorPercent + <name>FactorFeedback; feedback "NONE" = not enough data yet.
+const GARMIN_FACTORS: Array<[string, string]> = [
+  ["sleepScore", "Last night's sleep"],
+  ["recoveryTime", "Recovery time"],
+  ["hrv", "HRV status"],
+  ["acwr", "Training load"],
+  ["sleepHistory", "Sleep history"],
+  ["stressHistory", "Stress history"],
+];
+
+function humanize(key: unknown): string | null {
+  if (typeof key !== "string" || !key || key === "NONE") return null;
+  const t = key.toLowerCase().replace(/_/g, " ");
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
 
 const COMPONENT_LABEL = { hrv: "HRV", rhr: "Resting HR", sleepScore: "Sleep score" } as const;
 
@@ -23,6 +40,8 @@ export function RecoveryPanel() {
   const { data: trend, isLoading } = useSleepTrend(90);
   const { data: garmin } = useGarminToday();
   const today = todayLocal();
+  const { data: readinessRaw } = useGarminPayload("training_readiness", today);
+  const readiness = (Array.isArray(readinessRaw) ? readinessRaw[0] : null) as Record<string, unknown> | null;
 
   if (isLoading) return <div className="h-40 animate-pulse rounded-2xl bg-surface-raised" />;
 
@@ -64,6 +83,33 @@ export function RecoveryPanel() {
           </p>
         </div>
       </div>
+
+      {readiness && (
+        <div className="rounded-2xl border border-surface-raised bg-surface p-3.5">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+            Garmin factors{humanize(readiness.feedbackShort) && <span className="ml-1 normal-case text-fg">· {humanize(readiness.feedbackShort)}</span>}
+          </p>
+          <ul className="space-y-1.5">
+            {GARMIN_FACTORS.map(([key, label]) => {
+              const pct = readiness[`${key}FactorPercent`];
+              const feedback = humanize(readiness[`${key}FactorFeedback`]);
+              if (typeof pct !== "number" || !feedback) return null;
+              return (
+                <li key={key} className="flex items-center gap-2 text-[11px]">
+                  <span className="w-28 shrink-0 text-muted">{label}</span>
+                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-bg">
+                    <span
+                      className={`block h-full rounded-full ${pct >= 60 ? "bg-accent" : pct >= 30 ? "bg-amber-300" : "bg-rose-400"}`}
+                      style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
+                    />
+                  </span>
+                  <span className="w-16 shrink-0 text-right text-muted">{feedback}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {result && (
         <div className="rounded-2xl border border-surface-raised bg-surface p-3.5">

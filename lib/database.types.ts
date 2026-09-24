@@ -96,6 +96,7 @@ export type Database = {
         Row: {
           activity: string
           avg_hr_bpm: number | null
+          calories_kcal: number | null
           client_id: string
           distance_m: number | null
           duration_s: number | null
@@ -106,12 +107,16 @@ export type Database = {
           perceived_effort: number | null
           source: Database["public"]["Enums"]["metric_source"]
           started_at: string
+          training_effect_aerobic: number | null
+          training_effect_anaerobic: number | null
+          training_load: number | null
           updated_at: string
           user_id: string
         }
         Insert: {
           activity?: string
           avg_hr_bpm?: number | null
+          calories_kcal?: number | null
           client_id: string
           distance_m?: number | null
           duration_s?: number | null
@@ -122,12 +127,16 @@ export type Database = {
           perceived_effort?: number | null
           source?: Database["public"]["Enums"]["metric_source"]
           started_at: string
+          training_effect_aerobic?: number | null
+          training_effect_anaerobic?: number | null
+          training_load?: number | null
           updated_at?: string
           user_id: string
         }
         Update: {
           activity?: string
           avg_hr_bpm?: number | null
+          calories_kcal?: number | null
           client_id?: string
           distance_m?: number | null
           duration_s?: number | null
@@ -138,6 +147,9 @@ export type Database = {
           perceived_effort?: number | null
           source?: Database["public"]["Enums"]["metric_source"]
           started_at?: string
+          training_effect_aerobic?: number | null
+          training_effect_anaerobic?: number | null
+          training_load?: number | null
           updated_at?: string
           user_id?: string
         }

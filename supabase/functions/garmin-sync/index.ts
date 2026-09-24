@@ -250,8 +250,9 @@ async function syncDay(
       const entry = (Array.isArray(readiness) ? readiness[0] : readiness) as Record<string, unknown> | undefined;
       const score = num(entry?.score);
       if (score !== undefined && (await upsertMetric(supabase, userId, "training_readiness", date, score, "score", null))) upserted++;
-      const recoveryMin = num(entry?.recoveryTime);
-      if (recoveryMin !== undefined && (await upsertMetric(supabase, userId, "recovery_time_h", date, recoveryMin / 60, "h", null))) upserted++;
+      // recoveryTime is already in hours (verified: payload 1 = "1h", 2026-09-24).
+      const recoveryH = num(entry?.recoveryTime);
+      if (recoveryH !== undefined && (await upsertMetric(supabase, userId, "recovery_time_h", date, recoveryH, "h", null))) upserted++;
     },
     async () => {
       // One getSleepData call feeds every sleep metric — getSleepDuration() just
@@ -440,6 +441,13 @@ async function syncActivities(
         source: "garmin" as const,
         external_id: String(activityId),
         notes: typeof a.activityName === "string" ? a.activityName : null,
+        // Firstbeat metrics from the activity list (0016). Unverified key names
+        // until the first watch-recorded activity lands; the list item itself
+        // is stored below as activity_summary:<id> to check against.
+        training_effect_aerobic: num(a.aerobicTrainingEffect) ?? null,
+        training_effect_anaerobic: num(a.anaerobicTrainingEffect) ?? null,
+        training_load: num(a.activityTrainingLoad) ?? null,
+        calories_kcal: num(a.calories) !== undefined ? Math.round(num(a.calories)!) : null,
         updated_at: new Date().toISOString(),
       };
 
@@ -452,6 +460,7 @@ async function syncActivities(
 
       if (!haveDetail.has(`activity_detail:${activityId}`)) {
         const date = startLocal.slice(0, 10);
+        await storePayload(supabase, userId, date, `activity_summary:${activityId}`, a);
         for (const [suffix, path] of [
           ["detail", ""],
           ["splits", "/splits"],
