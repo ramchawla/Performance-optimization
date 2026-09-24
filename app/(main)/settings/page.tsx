@@ -652,8 +652,10 @@ function IntegrationShell({
 }) {
   return (
     <div className={`px-4 py-3.5 ${isLast ? "" : "border-b border-surface-raised"}`}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2.5">
+      {/* Wraps: at phone width a row with several actions (Garmin: sync / backfill /
+          disconnect) drops its buttons to a second line instead of crushing the name. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 basis-44 items-center gap-2.5">
           <div
             className={`flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] text-sm font-bold transition-colors duration-300 ${
               stale
@@ -674,7 +676,7 @@ function IntegrationShell({
             </div>
           </div>
         </div>
-        <div className="flex shrink-0 gap-1.5">{children}</div>
+        <div className="ml-auto flex flex-wrap justify-end gap-1.5">{children}</div>
       </div>
     </div>
   );
