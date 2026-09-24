@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { RecompTile } from "@/components/ui/RecompTile";
 import { RadialProgress } from "@/components/ui/RadialProgress";
@@ -10,6 +11,8 @@ import { CorrelationCard } from "@/components/ui/CorrelationCard";
 import { WeightTrendChart } from "@/components/charts/WeightTrendChart";
 import { VolumeBarChart } from "@/components/charts/VolumeBarChart";
 import { useDashboard } from "@/lib/queries/dashboard";
+import { useGarminToday } from "@/lib/queries/today";
+import { syncAgeLabel } from "@/lib/calc/garmin";
 
 function trendFor(slope: number | null): "up" | "down" | "flat" {
   if (slope === null || Math.abs(slope) < 0.05) return "flat";
@@ -74,6 +77,101 @@ function DashLink({
     >
       {children}
     </Link>
+  );
+}
+
+const BatteryIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className="h-full w-full">
+    <rect x="3" y="7" width="16" height="10" rx="2" />
+    <path d="M21 11v2M6 10v4M9 10v4" />
+  </svg>
+);
+const FlameIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinejoin="round" className="h-full w-full">
+    <path d="M12 3s5 4.5 5 9.5a5 5 0 0 1-10 0C7 10 9 8.5 9 8.5S9.5 11 11 11c0-3 1-8 1-8Z" />
+  </svg>
+);
+const TimerIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className="h-full w-full">
+    <circle cx="12" cy="13" r="8" />
+    <path d="M12 9v4l2.5 2M9 2h6" />
+  </svg>
+);
+
+/**
+ * Vitals: rollup values (sleep, RHR) plus Garmin's daily summary. The watch
+ * only reaches Garmin's cloud when the phone app uploads, so the header says
+ * how fresh that upload is — the honest answer to "why is my step count behind".
+ */
+function VitalsSection({
+  restingHr,
+  sleepHours,
+  rollupSteps,
+}: {
+  restingHr: number | null;
+  sleepHours: number | null;
+  rollupSteps: number | null;
+}) {
+  const { data: garmin } = useGarminToday();
+  const t = garmin?.today ?? {};
+  // Captured once per mount — render must stay pure (react-hooks/purity).
+  const [now] = useState(Date.now);
+  const age = syncAgeLabel(t.watch_last_sync_epoch_min, now);
+  const steps = t.steps ?? rollupSteps;
+
+  return (
+    <section>
+      <div className="mb-3 flex items-baseline justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Vitals</h2>
+        {age && (
+          <p className={`font-mono text-[10px] ${age.stale ? "text-amber-300" : "text-muted"}`}>
+            watch synced {age.label}
+            {age.stale && " · open Garmin Connect to update"}
+          </p>
+        )}
+      </div>
+      <div className="stagger grid grid-cols-3 gap-2">
+        <DashLink href="/sleep" label="Resting heart rate — open recovery">
+          <VitalCard icon={HeartIcon} value={restingHr ? `${restingHr}` : "—"} label="RHR" trendLabel="today" favorable />
+        </DashLink>
+        <DashLink href="/sleep" label="Sleep — open sleep details">
+          <VitalCard icon={MoonIcon} value={sleepHours ? `${sleepHours}h` : "—"} label="Sleep" trendLabel="last night" favorable />
+        </DashLink>
+        {/* ponytail: steps/kcal/intensity have no page of their own yet — static cards. */}
+        <VitalCard icon={BoltIcon} value={steps ? steps.toLocaleString() : "—"} label="Steps" trendLabel="today" favorable={false} />
+        <DashLink href="/readiness" label="Body battery — open readiness">
+          <VitalCard
+            icon={BatteryIcon}
+            value={t.body_battery_high !== undefined ? `${t.body_battery_high}` : "—"}
+            label="Body battery"
+            trendLabel={t.body_battery_low !== undefined ? `low ${t.body_battery_low}` : "today"}
+            favorable
+          />
+        </DashLink>
+        <VitalCard
+          icon={FlameIcon}
+          value={t.calories_active_kcal !== undefined ? Math.round(t.calories_active_kcal).toLocaleString() : "—"}
+          label="Active kcal"
+          trendLabel={t.calories_total_kcal !== undefined ? `${Math.round(t.calories_total_kcal).toLocaleString()} total` : "today"}
+          favorable={false}
+        />
+        <VitalCard
+          icon={TimerIcon}
+          value={garmin ? `${garmin.intensityWeek}` : "—"}
+          label="Intensity min"
+          trendLabel="7d · goal 150"
+          favorable={(garmin?.intensityWeek ?? 0) >= 150}
+        />
+      </div>
+      {(t.stress_avg !== undefined || t.spo2_avg !== undefined || t.floors_up !== undefined) && (
+        <p className="mt-2 font-mono text-[10px] text-muted">
+          {t.stress_avg !== undefined && <>Stress {Math.round(t.stress_avg)} · </>}
+          {t.spo2_avg !== undefined && <>SpO₂ {Math.round(t.spo2_avg)}% · </>}
+          {t.resp_waking_avg !== undefined && <>Breathing {Math.round(t.resp_waking_avg)} brpm · </>}
+          {t.floors_up !== undefined && <>{Math.round(t.floors_up)} floors</>}
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -298,46 +396,11 @@ export default function Page() {
         </div>
       </section>
 
-      <section>
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">
-          Vitals
-        </h2>
-        <div className="stagger grid grid-cols-3 gap-2">
-          <DashLink
-            href="/sleep"
-            label="Resting heart rate — open sleep and recovery"
-          >
-            <VitalCard
-              icon={HeartIcon}
-              value={
-                data.vitals.restingHrBpm ? `${data.vitals.restingHrBpm}` : "—"
-              }
-              label="RHR"
-              trendLabel="today"
-              favorable
-            />
-          </DashLink>
-          <DashLink href="/sleep" label="Sleep — open sleep details">
-            <VitalCard
-              icon={MoonIcon}
-              value={
-                data.vitals.sleepHours ? `${data.vitals.sleepHours}h` : "—"
-              }
-              label="Sleep"
-              trendLabel="last night"
-              favorable
-            />
-          </DashLink>
-          {/* ponytail: no steps/activity page yet — static until one exists (sub-project #3). */}
-          <VitalCard
-            icon={BoltIcon}
-            value={data.vitals.steps ? data.vitals.steps.toLocaleString() : "—"}
-            label="Steps"
-            trendLabel="today"
-            favorable={false}
-          />
-        </div>
-      </section>
+      <VitalsSection
+        restingHr={data.vitals.restingHrBpm}
+        sleepHours={data.vitals.sleepHours}
+        rollupSteps={data.vitals.steps}
+      />
 
       <TodayStrip />
 

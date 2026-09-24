@@ -159,7 +159,10 @@ export function useGarminDisconnect() {
 export function useGarminSync() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => callGarmin<GarminSyncResult>("sync", "POST"),
+    // Manual "Sync now" re-pulls a week; auto-sync passes days: 2 (today +
+    // yesterday, when sleep/HRV finalise) to keep hourly Garmin calls low.
+    mutationFn: (opts?: { days?: number }) =>
+      callGarmin<GarminSyncResult>("sync", "POST", undefined, opts?.days ? { days: String(opts.days) } : {}),
     onSuccess: () => invalidateGarminData(qc),
   });
 }
@@ -227,7 +230,7 @@ export function useGarminAutoSync() {
     }
     if (Date.now() - lastAuto < AUTO_SYNC_INTERVAL_MS) return;
 
-    sync.mutate(undefined, {
+    sync.mutate({ days: 2 }, {
       onSettled: () => {
         try {
           localStorage.setItem(AUTO_SYNC_STORAGE_KEY, String(Date.now()));

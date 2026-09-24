@@ -818,7 +818,7 @@ function GarminRow() {
       >
         {connected && !reauthRequired ? (
           <>
-            <button type="button" onClick={() => sync.mutate()} disabled={sync.isPending} className={SMALL_BTN}>
+            <button type="button" onClick={() => sync.mutate({})} disabled={sync.isPending} className={SMALL_BTN}>
               {sync.isPending ? "Syncing…" : "Sync now"}
             </button>
             <button
