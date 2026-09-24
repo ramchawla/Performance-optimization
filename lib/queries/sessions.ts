@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
+import { requestGarminSync } from "@/lib/queries/integrations";
 import { enqueueAndSync } from "@/lib/sync/syncWorker";
 import { useActiveSessionStore, type ActiveSessionExercise } from "@/stores/activeSession";
 import type { TemplateExerciseWithName } from "@/lib/queries/templates";
@@ -201,7 +202,12 @@ export function useCompleteSession() {
 
       endStore();
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["session-history"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["session-history"] });
+      // A finished workout is when fresh watch data (HR, training effect, the
+      // watch's own activity) is most likely — pull it now, not in 30 min.
+      requestGarminSync();
+    },
   });
 }
 

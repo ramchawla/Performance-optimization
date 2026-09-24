@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 
@@ -203,46 +203,74 @@ export function useGarminBackfill(onProgress: (daysDone: number, total: number) 
 }
 
 const AUTO_SYNC_STORAGE_KEY = "garmin_last_auto_sync";
-// ponytail: 1h throttle — each sync is ~43 Garmin calls on an unofficial API that has
-// already IP-flagged us once; per-load with no throttle risks getting the account flagged.
-const AUTO_SYNC_INTERVAL_MS = 3_600_000;
+const SYNC_REQUEST_EVENT = "garmin-sync-request";
+// ponytail: 30-min throttle — an auto-sync is ~10 Garmin calls (2 days + today's
+// fitness) on an unofficial API that has IP-flagged us once. Tighten only with cause.
+const AUTO_SYNC_INTERVAL_MS = 30 * 60_000;
 
 /**
- * There is no server-side cron for Garmin (see TECHNICAL-DESIGN.md §7b) — this
- * is what "automatic" means instead: fire a background sync from the client at
- * most once per hour, on app load (mounted in the (main) layout), so opening the app in the morning has last night's
- * sleep/HRV without a manual tap. Best-effort by design — a failure here
- * isn't worth a toast, the Settings "Sync now" button + its status text is the
- * surface for real errors. localStorage is per-device, which is fine: any
- * device opening the app keeps the data fresh.
+ * Ask for a Garmin sync now, skipping the throttle — e.g. right after a workout
+ * is finished in the app, when fresh watch data is most likely. Handled by
+ * useGarminAutoSync wherever it's mounted (the (main) layout).
+ */
+export function requestGarminSync() {
+  window.dispatchEvent(new Event(SYNC_REQUEST_EVENT));
+}
+
+/**
+ * There is no server-side cron for Garmin (see TECHNICAL-DESIGN.md §7b), and
+ * Garmin offers no push to personal apps — so "automatic" means these triggers:
+ *   - app opened, or brought back to the foreground (visibilitychange), at
+ *     most once per 30 min;
+ *   - requestGarminSync(), e.g. finishing a workout — immediate, unthrottled.
+ * Best-effort by design — a failure here isn't worth a toast; Settings'
+ * "Sync now" + its status text is the surface for real errors. localStorage
+ * is per-device, which is fine: any device opening the app keeps data fresh.
  */
 export function useGarminAutoSync() {
   const { data: status } = useGarminStatus();
-  const sync = useGarminSync();
+  // TanStack's mutate is referentially stable, so depending on it doesn't re-run the effect.
+  const { mutate } = useGarminSync();
+  const inFlight = useRef(false);
 
   useEffect(() => {
     if (!status?.connected) return;
-    let lastAuto = 0;
-    try {
-      lastAuto = Number(localStorage.getItem(AUTO_SYNC_STORAGE_KEY) ?? 0);
-    } catch {
-      // Storage unavailable (private mode, etc.) — just sync every mount.
-    }
-    if (Date.now() - lastAuto < AUTO_SYNC_INTERVAL_MS) return;
 
-    sync.mutate({ days: 2 }, {
-      onSettled: () => {
-        try {
-          localStorage.setItem(AUTO_SYNC_STORAGE_KEY, String(Date.now()));
-        } catch {
-          // Non-fatal — worst case this fires again next mount.
+    const run = (force: boolean) => {
+      if (inFlight.current) return;
+      let lastAuto = 0;
+      try {
+        lastAuto = Number(localStorage.getItem(AUTO_SYNC_STORAGE_KEY) ?? 0);
+      } catch {
+        // Storage unavailable (private mode, etc.) — fall through and sync.
+      }
+      if (!force && Date.now() - lastAuto < AUTO_SYNC_INTERVAL_MS) return;
+      inFlight.current = true;
+      mutate(
+        { days: 2 },
+        {
+          onSettled: () => {
+            inFlight.current = false;
+            try {
+              localStorage.setItem(AUTO_SYNC_STORAGE_KEY, String(Date.now()));
+            } catch {
+              // Non-fatal — worst case the next trigger fires again.
+            }
+          },
         }
-      },
-    });
-    // Deliberately mount-triggered only, not a `sync` dependency — re-running
-    // whenever the mutation object identity changes would defeat the guard.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status?.connected]);
+      );
+    };
+
+    const onVisible = () => document.visibilityState === "visible" && run(false);
+    const onRequest = () => run(true);
+    run(false);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener(SYNC_REQUEST_EVENT, onRequest);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener(SYNC_REQUEST_EVENT, onRequest);
+    };
+  }, [status?.connected, mutate]);
 }
 
 /** Last time Apple Health actually delivered anything — the only honest status there is. */
