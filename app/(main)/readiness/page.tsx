@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { RecoverySubnav } from "@/components/recovery/RecoverySubnav";
+import { RecoveryPanel } from "@/components/recovery/RecoveryPanel";
 import { formatDate, todayLocal } from "@/lib/datetime";
 import {
   ILLNESS_OPTIONS,
@@ -113,120 +114,154 @@ export default function ReadinessPage() {
   }
 
   return (
-    <main className="animate-enter p-4 pb-24">
-      <div className="flex items-center justify-between">
-        <h1 className="font-display text-xl font-bold text-fg">Check-in</h1>
-        <Link href="/dashboard" className="font-mono text-[11px] text-accent">
-          Dashboard
-        </Link>
-      </div>
-      <p className="mt-1 text-xs text-muted">
-        Twenty seconds. Skip anything you don&apos;t have a feel for — blank is better than a guess.
-      </p>
+    <main className="animate-enter space-y-4 p-4 pb-24">
+      <RecoverySubnav />
+      <h1 className="font-display text-xl font-bold text-fg">Readiness</h1>
+      <RecoveryPanel />
 
-      <form onSubmit={submit} className="mt-4 space-y-4">
-        <div className="rounded-2xl border border-surface-raised bg-surface p-3.5">
-          <label htmlFor="r-date" className="mb-1 block text-[11px] uppercase tracking-wide text-muted">
-            Day
-          </label>
-          <input
-            id="r-date"
-            type="date"
-            value={logDate}
-            max={todayLocal()}
-            onChange={(e) => setLogDate(e.target.value)}
-            className="w-full rounded-xl border border-surface-raised bg-bg px-3 py-2 font-mono text-sm text-fg focus-visible:border-accent focus-visible:outline-none"
-          />
-        </div>
+      <div>
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Morning check-in
+        </h2>
+        <p className="mt-1 text-xs text-muted">
+          Twenty seconds. Skip anything you don&apos;t have a feel for — blank
+          is better than a guess.
+        </p>
 
-        <div className="rounded-2xl border border-surface-raised bg-surface px-3.5 py-1 divide-y divide-surface-raised">
-          {READINESS_FIELDS.map((field) => (
-            <RatingRow
-              key={field.key}
-              label={field.label}
-              low={field.low}
-              high={field.high}
-              value={ratings[field.key]}
-              onChange={(v) => setRatings((r) => ({ ...r, [field.key]: v }))}
+        <form onSubmit={submit} className="mt-4 space-y-4">
+          <div className="rounded-2xl border border-surface-raised bg-surface p-3.5">
+            <label
+              htmlFor="r-date"
+              className="mb-1 block text-[11px] uppercase tracking-wide text-muted"
+            >
+              Day
+            </label>
+            <input
+              id="r-date"
+              type="date"
+              value={logDate}
+              max={todayLocal()}
+              onChange={(e) => setLogDate(e.target.value)}
+              className="w-full rounded-xl border border-surface-raised bg-bg px-3 py-2 font-mono text-sm text-fg focus-visible:border-accent focus-visible:outline-none"
             />
-          ))}
-        </div>
+          </div>
 
-        <div className="rounded-2xl border border-surface-raised bg-surface p-3.5">
-          <span className="mb-1.5 block text-[11px] uppercase tracking-wide text-muted">Feeling ill?</span>
-          <div className="flex gap-1.5">
-            {ILLNESS_OPTIONS.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => setIllness(opt)}
-                aria-pressed={illness === opt}
-                className={`min-h-11 flex-1 rounded-xl border text-xs capitalize transition-colors duration-150 ${
-                  illness === opt
-                    ? "border-accent bg-accent text-bg"
-                    : "border-surface-raised text-muted hover:text-fg"
-                }`}
-              >
-                {opt}
-              </button>
+          <div className="rounded-2xl border border-surface-raised bg-surface px-3.5 py-1 divide-y divide-surface-raised">
+            {READINESS_FIELDS.map((field) => (
+              <RatingRow
+                key={field.key}
+                label={field.label}
+                low={field.low}
+                high={field.high}
+                value={ratings[field.key]}
+                onChange={(v) => setRatings((r) => ({ ...r, [field.key]: v }))}
+              />
             ))}
           </div>
 
-          <label htmlFor="r-notes" className="mt-3.5 mb-1 block text-[11px] uppercase tracking-wide text-muted">
-            Anything worth noting
-          </label>
-          <textarea
-            id="r-notes"
-            rows={2}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Slept badly, big day at work, tweaked my knee…"
-            className="w-full resize-none rounded-xl border border-surface-raised bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted focus-visible:border-accent focus-visible:outline-none"
-          />
-        </div>
-
-        <div className="rounded-2xl border border-surface-raised bg-surface p-4 text-center">
-          <div className="font-display text-4xl font-bold leading-none text-accent">{score ?? "—"}</div>
-          <div className="mt-1 text-[11px] text-muted">
-            {score === null ? "Rate something to get a score" : `Readiness / 10 · from ${answered} answers`}
-          </div>
-        </div>
-
-        <button
-          type="submit"
-          disabled={upsert.isPending}
-          className="min-h-11 w-full rounded-xl bg-accent px-3 py-3 font-display text-sm font-bold text-bg transition-transform duration-200 active:scale-[0.98] disabled:opacity-50"
-        >
-          {upsert.isPending ? "Saving…" : existing ? "Update check-in" : "Save check-in"}
-        </button>
-        {upsert.isError && <p className="text-center text-xs text-red-400">Failed to save — try again.</p>}
-        {upsert.isSuccess && !upsert.isPending && <p className="text-center text-xs text-accent">Saved.</p>}
-      </form>
-
-      <section className="mt-8">
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Recent</h2>
-        {history && history.length > 0 ? (
-          <ul className="space-y-1.5">
-            {history.map((day) => (
-              <li key={day.id}>
+          <div className="rounded-2xl border border-surface-raised bg-surface p-3.5">
+            <span className="mb-1.5 block text-[11px] uppercase tracking-wide text-muted">
+              Feeling ill?
+            </span>
+            <div className="flex gap-1.5">
+              {ILLNESS_OPTIONS.map((opt) => (
                 <button
+                  key={opt}
                   type="button"
-                  onClick={() => setLogDate(day.log_date)}
-                  className="flex w-full min-h-11 items-center justify-between rounded-xl border border-surface-raised bg-surface px-3 py-2 text-left transition-colors duration-200 hover:border-accent/40"
+                  onClick={() => setIllness(opt)}
+                  aria-pressed={illness === opt}
+                  className={`min-h-11 flex-1 rounded-xl border text-xs capitalize transition-colors duration-150 ${
+                    illness === opt
+                      ? "border-accent bg-accent text-bg"
+                      : "border-surface-raised text-muted hover:text-fg"
+                  }`}
                 >
-                  <span className="text-sm text-fg">{formatDate(day.log_date)}</span>
-                  <span className="font-mono text-xs text-muted">
-                    {day.readiness_score !== null ? `${day.readiness_score}/10` : "—"}
-                    {day.illness && day.illness !== "none" ? ` · ${day.illness}` : ""}
-                  </span>
+                  {opt}
                 </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-xs text-muted">No check-ins yet.</p>
-        )}
-      </section>
+              ))}
+            </div>
+
+            <label
+              htmlFor="r-notes"
+              className="mt-3.5 mb-1 block text-[11px] uppercase tracking-wide text-muted"
+            >
+              Anything worth noting
+            </label>
+            <textarea
+              id="r-notes"
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Slept badly, big day at work, tweaked my knee…"
+              className="w-full resize-none rounded-xl border border-surface-raised bg-bg px-3 py-2 text-sm text-fg placeholder:text-muted focus-visible:border-accent focus-visible:outline-none"
+            />
+          </div>
+
+          <div className="rounded-2xl border border-surface-raised bg-surface p-4 text-center">
+            <div className="font-display text-4xl font-bold leading-none text-accent">
+              {score ?? "—"}
+            </div>
+            <div className="mt-1 text-[11px] text-muted">
+              {score === null
+                ? "Rate something to get a score"
+                : `Readiness / 10 · from ${answered} answers`}
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={upsert.isPending}
+            className="min-h-11 w-full rounded-xl bg-accent px-3 py-3 font-display text-sm font-bold text-bg transition-transform duration-200 active:scale-[0.98] disabled:opacity-50"
+          >
+            {upsert.isPending
+              ? "Saving…"
+              : existing
+                ? "Update check-in"
+                : "Save check-in"}
+          </button>
+          {upsert.isError && (
+            <p className="text-center text-xs text-red-400">
+              Failed to save — try again.
+            </p>
+          )}
+          {upsert.isSuccess && !upsert.isPending && (
+            <p className="text-center text-xs text-accent">Saved.</p>
+          )}
+        </form>
+
+        <section className="mt-8">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">
+            Recent
+          </h2>
+          {history && history.length > 0 ? (
+            <ul className="space-y-1.5">
+              {history.map((day) => (
+                <li key={day.id}>
+                  <button
+                    type="button"
+                    onClick={() => setLogDate(day.log_date)}
+                    className="flex w-full min-h-11 items-center justify-between rounded-xl border border-surface-raised bg-surface px-3 py-2 text-left transition-colors duration-200 hover:border-accent/40"
+                  >
+                    <span className="text-sm text-fg">
+                      {formatDate(day.log_date)}
+                    </span>
+                    <span className="font-mono text-xs text-muted">
+                      {day.readiness_score !== null
+                        ? `${day.readiness_score}/10`
+                        : "—"}
+                      {day.illness && day.illness !== "none"
+                        ? ` · ${day.illness}`
+                        : ""}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-muted">No check-ins yet.</p>
+          )}
+        </section>
+      </div>
     </main>
   );
 }

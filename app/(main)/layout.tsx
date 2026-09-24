@@ -11,7 +11,7 @@ const NAV = [
   { href: "/food/log", label: "Food" },
   { href: "/body/photos", label: "Body" },
   { href: "/mobility", label: "Mobility" },
-  { href: "/sleep", label: "Sleep" },
+  { href: "/sleep", label: "Recovery", match: ["/sleep", "/readiness"] },
 ];
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
@@ -23,7 +23,9 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       {children}
       <nav className="fixed bottom-4 left-4 right-4 flex justify-around rounded-2xl border border-surface-raised bg-surface/95 py-2 backdrop-blur">
         {NAV.map((item) => {
-          const active = pathname?.startsWith(`/${item.href.split("/")[1]}`);
+          // A section can own several top-level routes (Recovery = /sleep + /readiness).
+          const prefixes = "match" in item && item.match ? item.match : [`/${item.href.split("/")[1]}`];
+          const active = prefixes.some((p) => pathname?.startsWith(p));
           return (
             <Link
               key={item.href}

@@ -17,6 +17,8 @@ const TODAY_METRICS = [
   "resp_waking_avg",
   "resting_hr_bpm",
   "watch_last_sync_epoch_min",
+  "training_readiness",
+  "recovery_time_h",
 ] as const;
 
 type TodayMetric = (typeof TODAY_METRICS)[number];

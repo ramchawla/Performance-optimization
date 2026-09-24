@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { RecoverySubnav } from "@/components/recovery/RecoverySubnav";
 import { Hypnogram, STAGE_STYLE } from "@/components/sleep/Hypnogram";
 import { OvernightChart, type OvernightSeries } from "@/components/sleep/OvernightChart";
 import { SleepTrends } from "@/components/sleep/SleepTrends";
@@ -337,6 +338,7 @@ export default function SleepPage() {
 
   return (
     <main className="animate-enter space-y-5 p-4 pb-24">
+      <RecoverySubnav />
       <div className="flex items-center justify-between">
         <h1 className="font-display text-xl font-bold text-fg">Sleep</h1>
         <div className="flex items-center gap-1">
