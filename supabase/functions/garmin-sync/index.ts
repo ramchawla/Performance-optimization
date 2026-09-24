@@ -172,12 +172,35 @@ async function upsertMetric(
   return !error;
 }
 
+/**
+ * Keep every Garmin payload whole (migration 0014). Field names below are
+ * community-documented guesses; the stored payload is what lets a wrong
+ * guess be fixed and re-extracted instead of lost.
+ */
+async function storePayload(
+  supabase: ReturnType<typeof serviceClient>,
+  userId: string,
+  date: string,
+  kind: string,
+  payload: unknown
+) {
+  if (payload === null || payload === undefined || payload === "") return;
+  const { error } = await supabase.from("garmin_payloads").upsert(
+    { user_id: userId, payload_date: date, kind, payload, fetched_at: new Date().toISOString() },
+    { onConflict: "user_id,payload_date,kind" }
+  );
+  if (error) throw new Error(`storePayload ${kind}: ${error.message}`);
+}
+
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
 /** One day's worth of Garmin pulls, extracted defensively — see file header. */
 async function syncDay(
   supabase: ReturnType<typeof serviceClient>,
   client: GarminClient,
   userId: string,
-  date: string
+  date: string,
+  displayName: string | null
 ) {
   let upserted = 0;
   const errors: string[] = [];
@@ -189,8 +212,46 @@ async function syncDay(
 
   const attempts: Array<() => Promise<void>> = [
     async () => {
-      const steps = await client.getSteps(day);
-      if (typeof steps === "number" && (await upsertMetric(supabase, userId, "steps", date, steps, "count", { steps }, "larger"))) upserted++;
+      // The live daily summary: one call replaces getSteps + getHeartRate +
+      // dailyStress. Steps here matched the stats endpoint exactly (DIAG,
+      // 2026-09-24); any lag vs the watch is the watch→cloud upload, which
+      // lastSyncTimestampGMT exposes to the UI.
+      if (!displayName) throw new Error("daily_summary: no displayName");
+      const summary = (await client.get(`${api}/usersummary-service/usersummary/daily/${displayName}`, {
+        params: { calendarDate: date },
+      })) as Record<string, unknown> | undefined;
+      await storePayload(supabase, userId, date, "daily_summary", summary);
+      const lastSync = typeof summary?.lastSyncTimestampGMT === "string" ? Date.parse(`${summary.lastSyncTimestampGMT}Z`) : NaN;
+      const fields: Array<[string, number | undefined, string, "latest" | "larger"]> = [
+        ["steps", num(summary?.totalSteps), "count", "larger"],
+        ["calories_total_kcal", num(summary?.totalKilocalories), "kcal", "larger"],
+        ["calories_active_kcal", num(summary?.activeKilocalories), "kcal", "larger"],
+        ["intensity_min_moderate", num(summary?.moderateIntensityMinutes), "min", "larger"],
+        ["intensity_min_vigorous", num(summary?.vigorousIntensityMinutes), "min", "larger"],
+        ["floors_up", num(summary?.floorsAscended), "count", "larger"],
+        ["resting_hr_bpm", num(summary?.restingHeartRate), "bpm", "latest"],
+        ["stress_avg", (num(summary?.averageStressLevel) ?? -1) >= 0 ? num(summary?.averageStressLevel) : undefined, "score", "latest"],
+        ["body_battery_high", num(summary?.bodyBatteryHighestValue), "score", "latest"],
+        ["body_battery_low", num(summary?.bodyBatteryLowestValue), "score", "latest"],
+        ["spo2_avg", num(summary?.averageSpo2), "pct", "latest"],
+        ["spo2_low", num(summary?.lowestSpo2), "pct", "latest"],
+        ["resp_waking_avg", num(summary?.avgWakingRespirationValue), "brpm", "latest"],
+        // Minutes since epoch fits numeric(12,3); a 10-digit epoch in seconds wouldn't.
+        ["watch_last_sync_epoch_min", Number.isFinite(lastSync) ? Math.round(lastSync / 60_000) : undefined, "min", "latest"],
+      ];
+      for (const [metric, value, unit, agg] of fields) {
+        if (value !== undefined && (await upsertMetric(supabase, userId, metric, date, value, unit, null, agg))) upserted++;
+      }
+    },
+    async () => {
+      const readiness = await client.get(`${api}/metrics-service/metrics/trainingreadiness/${date}`, {});
+      await storePayload(supabase, userId, date, "training_readiness", readiness);
+      // Returns an array (one entry per recalculation through the day); newest first per community libs.
+      const entry = (Array.isArray(readiness) ? readiness[0] : readiness) as Record<string, unknown> | undefined;
+      const score = num(entry?.score);
+      if (score !== undefined && (await upsertMetric(supabase, userId, "training_readiness", date, score, "score", null))) upserted++;
+      const recoveryMin = num(entry?.recoveryTime);
+      if (recoveryMin !== undefined && (await upsertMetric(supabase, userId, "recovery_time_h", date, recoveryMin / 60, "h", null))) upserted++;
     },
     async () => {
       // One getSleepData call feeds every sleep metric — getSleepDuration() just
@@ -234,11 +295,6 @@ async function syncDay(
       }
     },
     async () => {
-      const hr = await client.getHeartRate(day);
-      const resting = (hr as Record<string, unknown> | undefined)?.restingHeartRate;
-      if (typeof resting === "number" && (await upsertMetric(supabase, userId, "resting_hr_bpm", date, resting, "bpm", hr))) upserted++;
-    },
-    async () => {
       // Undocumented endpoint (garmin-connect npm has no high-level HRV method) —
       // path verified against cyberjunky/python-garminconnect's garmin_connect_hrv_url.
       const hrv = await client.get(`${api}/hrv-service/hrv/${date}`, {});
@@ -257,12 +313,6 @@ async function syncDay(
         if (typeof value === "number" && (await upsertMetric(supabase, userId, metric, date, value, "ms", raw))) upserted++;
       }
     },
-    async () => {
-      // Undocumented — path verified against garmin_connect_daily_stress_url.
-      const stress = await client.get(`${api}/wellness-service/wellness/dailyStress/${date}`, {});
-      const value = (stress as Record<string, unknown> | undefined)?.avgStressLevel;
-      if (typeof value === "number" && value >= 0 && (await upsertMetric(supabase, userId, "stress_avg", date, value, "score", stress))) upserted++;
-    },
   ];
 
   for (const attempt of attempts) {
@@ -278,6 +328,80 @@ async function syncDay(
   return { upserted, errors };
 }
 
+/** First value of an object keyed by device id ({ "3431035450": {...} }). */
+function firstValue(v: unknown): Record<string, unknown> | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const vals = Object.values(v as Record<string, unknown>);
+  return (vals[0] ?? undefined) as Record<string, unknown> | undefined;
+}
+
+/**
+ * "Current state" metrics — VO2 max, training status/load, race predictions,
+ * endurance/hill score, fitness age. They describe today, so they're fetched
+ * once per sync for today only, never per day of the window.
+ */
+async function syncFitness(
+  supabase: ReturnType<typeof serviceClient>,
+  client: GarminClient,
+  userId: string,
+  today: string,
+  displayName: string | null
+) {
+  const api = client.url.GC_API;
+  let upserted = 0;
+  const errors: string[] = [];
+  const put = async (metric: string, value: number | undefined, unit: string) => {
+    if (value !== undefined && (await upsertMetric(supabase, userId, metric, today, value, unit, null))) upserted++;
+  };
+
+  const sources: Array<[string, string, (p: Record<string, unknown> | undefined, raw: unknown) => Promise<void>]> = [
+    ["training_status", `${api}/metrics-service/metrics/trainingstatus/aggregated/${today}`, async (p) => {
+      const load = firstValue((p?.mostRecentTrainingLoadBalance as Record<string, unknown> | undefined)?.metricsTrainingLoadBalanceDTOMap);
+      const acute = firstValue((p?.mostRecentTrainingStatus as Record<string, unknown> | undefined)?.latestTrainingStatusData)
+        ?.acuteTrainingLoadDTO as Record<string, unknown> | undefined;
+      await put("training_load_acute", num(acute?.dailyTrainingLoadAcute), "load");
+      await put("training_load_chronic", num(acute?.dailyTrainingLoadChronic), "load");
+      await put("training_load_aerobic_low", num(load?.monthlyLoadAerobicLow), "load");
+      await put("training_load_aerobic_high", num(load?.monthlyLoadAerobicHigh), "load");
+      await put("training_load_anaerobic", num(load?.monthlyLoadAnaerobic), "load");
+    }],
+    ["max_metrics", `${api}/metrics-service/metrics/maxmet/daily/${today}/${today}`, async (_p, raw) => {
+      const entry = (Array.isArray(raw) ? raw[0] : raw) as Record<string, unknown> | undefined;
+      const generic = entry?.generic as Record<string, unknown> | undefined;
+      await put("vo2max", num(generic?.vo2MaxPreciseValue) ?? num(generic?.vo2MaxValue), "ml/kg/min");
+    }],
+    ["race_predictions", displayName ? `${api}/metrics-service/metrics/racepredictions/latest/${displayName}` : "", async (p) => {
+      await put("race_5k_s", num(p?.time5K), "s");
+      await put("race_10k_s", num(p?.time10K), "s");
+      await put("race_half_s", num(p?.timeHalfMarathon), "s");
+      await put("race_marathon_s", num(p?.timeMarathon), "s");
+    }],
+    ["endurance_score", `${api}/metrics-service/metrics/endurancescore?calendarDate=${today}`, async (p) => {
+      await put("endurance_score", num(p?.overallScore), "score");
+    }],
+    ["hill_score", `${api}/metrics-service/metrics/hillscore?calendarDate=${today}`, async (p) => {
+      await put("hill_score", num(p?.overallScore), "score");
+    }],
+    ["fitness_age", `${api}/fitnessage-service/fitnessage/${today}`, async (p) => {
+      await put("fitness_age", num(p?.fitnessAge), "years");
+    }],
+  ];
+
+  for (const [kind, url, extract] of sources) {
+    if (!url) continue;
+    try {
+      const raw = await client.get(url, {});
+      await storePayload(supabase, userId, today, kind, raw);
+      await extract(raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : undefined, raw);
+    } catch (err) {
+      const message = `${kind}: ${err instanceof Error ? err.message : String(err)}`;
+      console.error("syncFitness", message);
+      errors.push(message);
+    }
+  }
+  return { upserted, errors };
+}
+
 async function syncActivities(
   supabase: ReturnType<typeof serviceClient>,
   client: GarminClient,
@@ -286,6 +410,16 @@ async function syncActivities(
   const activities = (await client.getActivities(0, 20)) as Array<Record<string, unknown>>;
   let imported = 0;
   const errors: string[] = [];
+  const api = client.url.GC_API;
+
+  // Detail (HR zones, splits, strength sets) is fetched once per activity —
+  // only for ids with no stored detail payload yet.
+  const { data: known } = await supabase
+    .from("garmin_payloads")
+    .select("kind")
+    .eq("user_id", userId)
+    .like("kind", "activity_detail:%");
+  const haveDetail = new Set((known ?? []).map((k) => k.kind));
 
   for (const a of activities) {
     try {
@@ -315,6 +449,24 @@ async function syncActivities(
         .upsert(row, { onConflict: "user_id,source,external_id" });
       if (error) errors.push(`activity ${activityId}: ${error.message}`);
       else imported++;
+
+      if (!haveDetail.has(`activity_detail:${activityId}`)) {
+        const date = startLocal.slice(0, 10);
+        for (const [suffix, path] of [
+          ["detail", ""],
+          ["splits", "/splits"],
+          ["hr_zones", "/hrTimeInZones"],
+          ["sets", "/exerciseSets"],
+        ] as const) {
+          try {
+            const raw = await client.get(`${api}/activity-service/activity/${activityId}${path}`, {});
+            await storePayload(supabase, userId, date, `activity_${suffix}:${activityId}`, raw);
+          } catch (err) {
+            // Sets only exist for strength activities; a 404 there is expected.
+            if (suffix !== "sets") errors.push(`activity ${activityId} ${suffix}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+      }
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
     }
@@ -465,24 +617,20 @@ Deno.serve(async (req: Request) => {
       const errors: string[] = [];
       let upserted = 0;
 
-      // TEMP diagnostic (steps lag investigation) — remove once root cause is known.
-      try {
-        const today = localDateString(0, timezone);
-        const profile = await client.getUserProfile();
-        const summary = await client.get(
-          `${client.url.GC_API}/usersummary-service/usersummary/daily/${profile?.displayName}`,
-          { params: { calendarDate: today } }
-        );
-        const statsSteps = await client.getSteps(new Date(`${today}T12:00:00Z`));
-        console.log("DIAG steps", JSON.stringify({
-          today,
-          statsSteps,
-          summaryTotalSteps: summary?.totalSteps,
-          lastSyncTimestampGMT: summary?.lastSyncTimestampGMT,
-          wellnessEndTimeLocal: summary?.wellnessEndTimeLocal,
-        }));
-      } catch (err) {
-        console.log("DIAG steps failed:", err instanceof Error ? err.message : String(err));
+      // Needed by the daily-summary and race-prediction URLs. Cached in
+      // provider_user_id so it costs one Garmin call ever, not one per sync.
+      let displayName: string | null = account.provider_user_id ?? null;
+      if (!displayName) {
+        try {
+          const profile = await client.getUserProfile();
+          displayName = typeof profile?.displayName === "string" ? profile.displayName : null;
+          if (displayName) {
+            await supabase.from("integration_accounts").update({ provider_user_id: displayName })
+              .eq("user_id", userId).eq("provider", "garmin");
+          }
+        } catch (err) {
+          errors.push(`profile: ${err instanceof Error ? err.message : String(err)}`);
+        }
       }
 
       // ?days/?offset let Settings backfill history in chunks small enough to finish
@@ -496,9 +644,15 @@ Deno.serve(async (req: Request) => {
 
       for (let daysAgo = startOffset; daysAgo < startOffset + days; daysAgo++) {
         const date = localDateString(daysAgo, timezone);
-        const result = await syncDay(supabase, client, userId, date);
+        const result = await syncDay(supabase, client, userId, date, displayName);
         upserted += result.upserted;
         errors.push(...result.errors);
+      }
+
+      if (startOffset === 0) {
+        const fitness = await syncFitness(supabase, client, userId, localDateString(0, timezone), displayName);
+        upserted += fitness.upserted;
+        errors.push(...fitness.errors);
       }
 
       let activityResult = { fetched: 0, imported: 0, errors: [] as string[] };

@@ -203,6 +203,33 @@ export type Database = {
         }
         Relationships: []
       }
+      garmin_payloads: {
+        Row: {
+          fetched_at: string
+          id: string
+          kind: string
+          payload: Json
+          payload_date: string
+          user_id: string
+        }
+        Insert: {
+          fetched_at?: string
+          id?: string
+          kind: string
+          payload: Json
+          payload_date: string
+          user_id: string
+        }
+        Update: {
+          fetched_at?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          payload_date?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       health_metrics: {
         Row: {
           created_at: string
