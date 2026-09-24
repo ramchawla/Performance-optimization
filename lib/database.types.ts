@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_insights: {
+        Row: {
+          body_md: string
+          created_at: string
+          id: string
+          model: string
+          period_end: string
+          period_start: string
+          user_id: string
+        }
+        Insert: {
+          body_md: string
+          created_at?: string
+          id?: string
+          model?: string
+          period_end: string
+          period_start: string
+          user_id: string
+        }
+        Update: {
+          body_md?: string
+          created_at?: string
+          id?: string
+          model?: string
+          period_end?: string
+          period_start?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       body_metrics: {
         Row: {
           bf_method: string | null

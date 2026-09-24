@@ -13,6 +13,10 @@ import { VolumeBarChart } from "@/components/charts/VolumeBarChart";
 import { useDashboard } from "@/lib/queries/dashboard";
 import { useGarminToday } from "@/lib/queries/today";
 import { syncAgeLabel } from "@/lib/calc/garmin";
+import { buildInsights } from "@/lib/calc/insights";
+import { useSleepTrend } from "@/lib/queries/sleep";
+import { useLatestCoachNote } from "@/lib/queries/insights";
+import { formatDate, todayLocal } from "@/lib/datetime";
 
 function trendFor(slope: number | null): "up" | "down" | "flat" {
   if (slope === null || Math.abs(slope) < 0.05) return "flat";
@@ -97,6 +101,51 @@ const TimerIcon = (
     <path d="M12 9v4l2.5 2M9 2h6" />
   </svg>
 );
+
+const TONE_DOT = { warn: "bg-amber-300", good: "bg-accent", info: "bg-muted" } as const;
+
+/**
+ * What to act on today: the Mac coach's latest note (if the job has run) and
+ * the free rule-based insights (lib/calc/insights.ts). Both are $0 — rules run
+ * in the browser, the coach runs on the user's Pro plan via Claude Code.
+ */
+function InsightsSection() {
+  const { data: trend } = useSleepTrend(90);
+  const { data: note } = useLatestCoachNote();
+  const today = todayLocal();
+  const insights = buildInsights(
+    (trend ?? []).map((n) => ({ date: n.date, metrics: n.metrics, tags: n.log?.tags ?? [] })),
+    today
+  );
+  if (!note && insights.length === 0) return null;
+
+  return (
+    <section>
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Today&apos;s insights</h2>
+      <div className="space-y-2">
+        {note && (
+          <div className="rounded-2xl border border-accent/30 bg-accent/[0.05] p-4">
+            <div className="mb-1.5 flex items-baseline justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-accent">Coach</p>
+              <p className="font-mono text-[10px] text-muted">{formatDate(note.created_at.slice(0, 10))}</p>
+            </div>
+            {/* Plain text on purpose: no markdown dependency (CLAUDE.md rule 9); the prompt asks for short plain lines. */}
+            <p className="whitespace-pre-line text-sm leading-relaxed text-fg">{note.body_md}</p>
+          </div>
+        )}
+        {insights.slice(0, 5).map((i) => (
+          <div key={i.id} className="flex gap-2.5 rounded-2xl border border-surface-raised bg-surface p-3.5">
+            <span aria-hidden className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${TONE_DOT[i.tone]}`} />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-fg">{i.title}</p>
+              <p className="mt-0.5 text-xs leading-snug text-muted">{i.detail}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 /**
  * Vitals: rollup values (sleep, RHR) plus Garmin's daily summary. The watch
@@ -401,6 +450,8 @@ export default function Page() {
         sleepHours={data.vitals.sleepHours}
         rollupSteps={data.vitals.steps}
       />
+
+      <InsightsSection />
 
       <TodayStrip />
 
