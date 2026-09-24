@@ -20,6 +20,7 @@ import {
   useGarminConnectWithTokens,
   useGarminDisconnect,
   useGarminStatus,
+  useGarminBackfill,
   useGarminSync,
 } from "@/lib/queries/integrations";
 import { useQuery } from "@tanstack/react-query";
@@ -736,6 +737,8 @@ function GarminRow() {
   const connectWithTokens = useGarminConnectWithTokens();
   const disconnect = useGarminDisconnect();
   const sync = useGarminSync();
+  const [backfillDone, setBackfillDone] = useState<number | null>(null);
+  const backfill = useGarminBackfill((done) => setBackfillDone(done));
   const [showForm, setShowForm] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -748,7 +751,13 @@ function GarminRow() {
 
   const statusText = isLoading
     ? "Checking…"
-    : error
+    : backfill.isPending
+      ? `Backfilling ${backfillDone ?? 0}/90 days…`
+      : backfill.isError
+        ? `Backfill stopped at ${backfillDone ?? 0}/90 days — ${backfill.error instanceof Error ? backfill.error.message : "error"}`
+        : backfill.isSuccess
+          ? `Backfilled 90 days · ${backfill.data.upserted} metrics`
+          : error
       ? "Status unavailable"
       : reauthRequired
         ? "Session expired — reconnect below"
@@ -811,6 +820,17 @@ function GarminRow() {
           <>
             <button type="button" onClick={() => sync.mutate()} disabled={sync.isPending} className={SMALL_BTN}>
               {sync.isPending ? "Syncing…" : "Sync now"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setBackfillDone(0);
+                backfill.mutate();
+              }}
+              disabled={backfill.isPending || sync.isPending}
+              className={SMALL_BTN}
+            >
+              Backfill 90d
             </button>
             <button
               type="button"

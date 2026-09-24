@@ -93,7 +93,8 @@ export interface GarminSyncResult {
 async function callGarmin<T>(
   action: string,
   method: "GET" | "POST" = "GET",
-  body?: unknown
+  body?: unknown,
+  params: Record<string, string> = {}
 ): Promise<T> {
   const supabase = createClient();
   const { data } = await supabase.auth.getSession();
@@ -101,7 +102,7 @@ async function callGarmin<T>(
   if (!token) throw new Error("Not signed in");
 
   const res = await fetch(
-    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/garmin-sync?action=${action}`,
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/garmin-sync?${new URLSearchParams({ action, ...params })}`,
     {
       method,
       headers: {
@@ -159,10 +160,42 @@ export function useGarminSync() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => callGarmin<GarminSyncResult>("sync", "POST"),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["integration", "garmin"] });
-      qc.invalidateQueries({ queryKey: ["dashboard"] });
+    onSuccess: () => invalidateGarminData(qc),
+  });
+}
+
+function invalidateGarminData(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["integration", "garmin"] });
+  qc.invalidateQueries({ queryKey: ["dashboard"] });
+  qc.invalidateQueries({ queryKey: ["sleep"] });
+}
+
+const BACKFILL_DAYS = 90;
+const BACKFILL_CHUNK = 14; // garmin-sync caps a call at 14 days (~70 Garmin requests)
+
+/**
+ * One-time history pull so 30/90-day trends aren't empty. Chunked from the
+ * client because 90 days in one invocation (~450 Garmin requests) would blow
+ * the edge function's wall-clock limit. Stops on the first failed chunk;
+ * earlier chunks stay written (upserts are idempotent), so re-running resumes.
+ */
+export function useGarminBackfill(onProgress: (daysDone: number, total: number) => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      let upserted = 0;
+      for (let offset = 0; offset < BACKFILL_DAYS; offset += BACKFILL_CHUNK) {
+        const days = Math.min(BACKFILL_CHUNK, BACKFILL_DAYS - offset);
+        const res = await callGarmin<GarminSyncResult>("sync", "POST", undefined, {
+          offset: String(offset),
+          days: String(days),
+        });
+        upserted += res.upserted;
+        onProgress(offset + days, BACKFILL_DAYS);
+      }
+      return { upserted };
     },
+    onSettled: () => invalidateGarminData(qc),
   });
 }
 

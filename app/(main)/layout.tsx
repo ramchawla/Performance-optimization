@@ -11,7 +11,7 @@ const NAV = [
   { href: "/food/log", label: "Food" },
   { href: "/body/photos", label: "Body" },
   { href: "/mobility", label: "Mobility" },
-  { href: "/settings", label: "Settings" },
+  { href: "/sleep", label: "Sleep" },
 ];
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {

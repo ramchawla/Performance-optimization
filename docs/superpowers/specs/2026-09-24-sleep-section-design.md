@@ -21,7 +21,7 @@ Give sleep its own first-class section, built on the Garmin Fenix 7 data the `ga
 
 ## Verified data available (live Garmin payloads, 2026-09-23)
 
-From the sleep response (`health_metrics.raw` of `sleep_deep_s` rows — the full `getSleepData` payload):
+From the sleep response (`health_metrics.raw` of `sleep_duration_s` rows — the full `getSleepData` payload):
 - `dailySleepDTO`: `sleepTimeSeconds`, `deep/light/rem/awakeSleepSeconds`, `awakeCount`, `napTimeSeconds`, `sleepStartTimestampLocal/GMT`, `sleepEndTimestampLocal/GMT`, `averageRespirationValue`, `lowest/highestRespirationValue`, `avgHeartRate`, `avgSleepStress`, `sleepScoreFeedback` (e.g. `POSITIVE_LONG_AND_REFRESHING`), `sleepScoreInsight`, `sleepNeed` (`actual`/`baseline` in **minutes**), `sleepScores`
 - `sleepScores.overall.{value, qualifierKey}`; per-component `qualifierKey` + `optimalStart/End` for `totalDuration`, `deepPercentage`, `remPercentage`, `lightPercentage`, `stress`, `awakeCount`, `restlessness`
 - Top level: `bodyBatteryChange`, `restlessMomentsCount`, `sleepLevels` (`[{startGMT, endGMT, activityLevel}]`), `hrvData`, `sleepHeartRate`, `sleepStress`, `sleepBodyBattery`, `wellnessEpochRespirationDataDTOList`
@@ -89,7 +89,7 @@ Migration `0013_sleep_log_tags.sql`: `alter table sleep_logs add column tags tex
 
 ### Reads (`lib/queries/sleep.ts`)
 
-- `useSleepNight(date)` — `health_metrics` rows for `metric_date = date`, one per `metric_type` chosen by source priority (garmin > health_export > strava > manual, same order as `daily_rollup`), plus the `raw` of the `sleep_deep_s` and `hrv_ms` rows; plus that date's `sleep_logs` row.
+- `useSleepNight(date)` — `health_metrics` rows for `metric_date = date`, one per `metric_type` chosen by source priority (garmin > health_export > strava > manual, same order as `daily_rollup`), plus the `raw` of the `sleep_duration_s` row (the only sleep row carrying the full payload; others store `raw = null` to avoid ~18KB × 14 duplicates per night) and the `hrv_ms` row; plus that date's `sleep_logs` row.
 - `useSleepTrend(days)` — scalar values only (no `raw`) for the trend metric types over `days` + 28 (baseline window).
 - Existing `useSleepLog` / `useUpsertSleepLog` extended with `tags`.
 

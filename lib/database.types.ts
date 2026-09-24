@@ -799,6 +799,7 @@ export type Database = {
           score_consistency: number | null
           score_disruptions: number | null
           score_duration: number | null
+          tags: string[]
           updated_at: string
           user_id: string
           waketime_at: string | null
@@ -817,6 +818,7 @@ export type Database = {
           score_consistency?: number | null
           score_disruptions?: number | null
           score_duration?: number | null
+          tags?: string[]
           updated_at?: string
           user_id: string
           waketime_at?: string | null
@@ -835,6 +837,7 @@ export type Database = {
           score_consistency?: number | null
           score_disruptions?: number | null
           score_duration?: number | null
+          tags?: string[]
           updated_at?: string
           user_id?: string
           waketime_at?: string | null
