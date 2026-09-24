@@ -181,19 +181,24 @@ async function syncDay(
 ) {
   let upserted = 0;
   const errors: string[] = [];
+  // Library methods take a Date and format it via getTimezoneOffset(); noon UTC keeps
+  // the calendar day intact for any runtime offset within ±12h (edge runtime is UTC).
+  const day = new Date(`${date}T12:00:00Z`);
+  // client.get() hands the URL straight to axios with no base — must be absolute.
+  const api = client.url.GC_API;
 
   const attempts: Array<() => Promise<void>> = [
     async () => {
-      const steps = await client.getSteps(date);
+      const steps = await client.getSteps(day);
       if (typeof steps === "number" && (await upsertMetric(supabase, userId, "steps", date, steps, "count", { steps }, "larger"))) upserted++;
     },
     async () => {
-      const duration = await client.getSleepDuration(date);
+      const duration = await client.getSleepDuration(day);
       const seconds = (duration?.hours ?? 0) * 3600 + (duration?.minutes ?? 0) * 60;
       if (seconds > 0 && (await upsertMetric(supabase, userId, "sleep_duration_s", date, seconds, "s", duration))) upserted++;
     },
     async () => {
-      const sleep = await client.getSleepData(date);
+      const sleep = await client.getSleepData(day);
       const dto = (sleep as Record<string, unknown> | undefined)?.dailySleepDTO as Record<string, unknown> | undefined;
       const deep = dto?.deepSleepSeconds;
       const light = dto?.lightSleepSeconds;
@@ -203,21 +208,21 @@ async function syncDay(
       if (typeof rem === "number") await upsertMetric(supabase, userId, "sleep_rem_s", date, rem, "s", sleep);
     },
     async () => {
-      const hr = await client.getHeartRate(date);
+      const hr = await client.getHeartRate(day);
       const resting = (hr as Record<string, unknown> | undefined)?.restingHeartRate;
       if (typeof resting === "number" && (await upsertMetric(supabase, userId, "resting_hr_bpm", date, resting, "bpm", hr))) upserted++;
     },
     async () => {
       // Undocumented endpoint (garmin-connect npm has no high-level HRV method) —
       // path verified against cyberjunky/python-garminconnect's garmin_connect_hrv_url.
-      const hrv = await client.get(`/hrv-service/hrv/${date}`, {});
+      const hrv = await client.get(`${api}/hrv-service/hrv/${date}`, {});
       const avg = (hrv as Record<string, unknown> | undefined)?.hrvSummary as Record<string, unknown> | undefined;
       const value = avg?.lastNightAvg;
       if (typeof value === "number" && (await upsertMetric(supabase, userId, "hrv_ms", date, value, "ms", hrv))) upserted++;
     },
     async () => {
       // Undocumented — path verified against garmin_connect_daily_stress_url.
-      const stress = await client.get(`/wellness-service/wellness/dailyStress/${date}`, {});
+      const stress = await client.get(`${api}/wellness-service/wellness/dailyStress/${date}`, {});
       const value = (stress as Record<string, unknown> | undefined)?.avgStressLevel;
       if (typeof value === "number" && value >= 0 && (await upsertMetric(supabase, userId, "stress_avg", date, value, "score", stress))) upserted++;
     },
