@@ -227,7 +227,9 @@ async function syncDay(
     try {
       await attempt();
     } catch (err) {
-      errors.push(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`syncDay ${date}:`, message);
+      errors.push(message);
     }
   }
 
@@ -408,7 +410,11 @@ Deno.serve(async (req: Request) => {
           oauth1Token: JSON.parse(account.refresh_token),
           oauth2Token: JSON.parse(account.access_token),
         });
-      } catch {
+      } catch (err) {
+        // Same blind spot as below — this could be a genuinely malformed
+        // stored token (JSON.parse) or loadToken() itself throwing for a
+        // different reason, and both looked identical from the outside.
+        console.error("sync: clientFromStoredTokens threw:", err instanceof Error ? err.stack ?? err.message : String(err));
         return json({ error: "reauth_required" }, 401);
       }
 
@@ -434,6 +440,10 @@ Deno.serve(async (req: Request) => {
       // session (every call above independently hits the same auth check)
       // rather than seven days of coincidental per-metric failures.
       if (upserted === 0 && activityResult.imported === 0 && errors.length > 0) {
+        // reauth_required discards `errors` from the client response, which
+        // made this heuristic firing for a NON-auth reason undiagnosable —
+        // log what actually happened before returning the generic signal.
+        console.error("sync: all attempts failed, returning reauth_required. Underlying errors:", JSON.stringify(errors));
         return json({ error: "reauth_required" }, 401);
       }
 
