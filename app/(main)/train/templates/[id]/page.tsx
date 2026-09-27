@@ -16,6 +16,7 @@ import {
 import { useStartSession } from "@/lib/queries/sessions";
 import { ExercisePicker } from "@/components/train/ExercisePicker";
 import { displayWeightKg, inputToKg } from "@/lib/units";
+import { todayLocal } from "@/lib/datetime";
 
 
 type RenderGroup =
@@ -63,6 +64,8 @@ export default function TemplateDetailPage() {
 
   const [showPicker, setShowPicker] = useState(false);
   const [isDeload, setIsDeload] = useState(false);
+  const [showPastDate, setShowPastDate] = useState(false);
+  const [pastDate, setPastDate] = useState(todayLocal);
 
   function move(index: number, direction: -1 | 1) {
     const target = index + direction;
@@ -95,11 +98,13 @@ export default function TemplateDetailPage() {
 
   async function handleStartSession() {
     if (!template) return;
+    const backdatedTo = showPastDate && pastDate !== todayLocal() ? pastDate : undefined;
     const sessionId = await startSession.mutateAsync({
       templateId: template.id,
       templateName: template.name,
       isDeload,
       templateExercises: exercises,
+      backdatedTo,
     });
     if (sessionId) router.push("/train/session");
   }
@@ -133,23 +138,53 @@ export default function TemplateDetailPage() {
       </Link>
       <h1 className="font-display text-xl font-bold tracking-tight text-fg">{template.name}</h1>
 
-      <div className="flex items-center gap-3 rounded-2xl bg-surface p-3">
-        <label className="flex items-center gap-2 text-sm text-fg">
-          <input
-            type="checkbox"
-            checked={isDeload}
-            onChange={(e) => setIsDeload(e.target.checked)}
-            className="accent-[var(--accent)]"
-          />
-          Deload session
-        </label>
-        <button
-          onClick={handleStartSession}
-          disabled={exercises.length === 0}
-          className="ml-auto rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-bg transition-transform duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
-        >
-          Start Session
-        </button>
+      <div className="space-y-2 rounded-2xl bg-surface p-3">
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-fg">
+            <input
+              type="checkbox"
+              checked={isDeload}
+              onChange={(e) => setIsDeload(e.target.checked)}
+              className="accent-[var(--accent)]"
+            />
+            Deload session
+          </label>
+          <button
+            onClick={handleStartSession}
+            disabled={exercises.length === 0}
+            className="ml-auto rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-bg transition-transform duration-150 hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+          >
+            {showPastDate && pastDate !== todayLocal() ? "Log Workout" : "Start Session"}
+          </button>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted">
+          <label className="flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={showPastDate}
+              onChange={(e) => {
+                setShowPastDate(e.target.checked);
+                if (!e.target.checked) setPastDate(todayLocal());
+              }}
+              className="accent-[var(--accent)]"
+            />
+            Log a past workout
+          </label>
+          {showPastDate && (
+            <input
+              type="date"
+              value={pastDate}
+              max={todayLocal()}
+              onChange={(e) => setPastDate(e.target.value)}
+              className="rounded-lg border border-surface-raised bg-bg px-2 py-1 font-mono text-xs text-fg focus-visible:border-accent focus-visible:outline-none"
+            />
+          )}
+        </div>
+        {showPastDate && pastDate !== todayLocal() && (
+          <p className="text-[11px] text-muted">
+            No live timers — enter your sets, then set the total duration when you finish.
+          </p>
+        )}
       </div>
 
       <ul className="stagger space-y-3">

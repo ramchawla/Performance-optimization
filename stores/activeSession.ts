@@ -37,6 +37,10 @@ export interface ActiveSession {
   templateId: string | null;
   templateNameSnapshot: string | null;
   startedAt: string;
+  /** True when started for a past date (see /train/templates/[id] "Log a past workout") —
+   * the active-session page hides the live elapsed clock and rest timer for these,
+   * since neither means anything against a backdated startedAt. */
+  isBackdated: boolean;
   isDeload: boolean;
   bodyweightKg: number | null;
   exercises: ActiveSessionExercise[];
@@ -53,6 +57,8 @@ interface ActiveSessionState {
     templateNameSnapshot: string | null;
     isDeload: boolean;
     exercises: ActiveSessionExercise[];
+    /** ISO timestamp to backdate to; omit for "now" (the normal live session). */
+    startedAt?: string;
   }) => void;
   endSession: () => void;
 
@@ -76,13 +82,14 @@ export const useActiveSessionStore = create<ActiveSessionState>((set) => ({
   restTimerEndsAt: null,
   restTimerTotalSeconds: null,
 
-  startSession: ({ clientId, templateId, templateNameSnapshot, isDeload, exercises }) =>
+  startSession: ({ clientId, templateId, templateNameSnapshot, isDeload, exercises, startedAt }) =>
     set({
       session: {
         clientId,
         templateId,
         templateNameSnapshot,
-        startedAt: new Date().toISOString(),
+        startedAt: startedAt ?? new Date().toISOString(),
+        isBackdated: startedAt !== undefined,
         isDeload,
         bodyweightKg: null,
         exercises,

@@ -14,6 +14,8 @@ export interface StartSessionInput {
   templateName: string;
   isDeload: boolean;
   templateExercises: TemplateExerciseWithName[];
+  /** Set to log a past workout (see /train/templates/[id]) — omit for the normal live start-now flow. */
+  backdatedTo?: string; // YYYY-MM-DD
 }
 
 /** Session-start snapshot: copies template targets into session_exercises per TECHNICAL-DESIGN §2 & CLAUDE.md rule 2. */
@@ -27,7 +29,9 @@ export function useStartSession() {
       if (error || !userData.user) throw new Error("Not signed in");
 
       const sessionId = crypto.randomUUID();
-      const startedAt = new Date().toISOString();
+      // Noon on the picked day — same "no real time to anchor to" convention as
+      // combineLocal's blank-time fallback (lib/datetime.ts).
+      const startedAt = input.backdatedTo ? combineLocal(input.backdatedTo, "12:00") : new Date().toISOString();
 
       const activeExercises: ActiveSessionExercise[] = input.templateExercises.map((te) => ({
         clientId: crypto.randomUUID(),
@@ -84,6 +88,7 @@ export function useStartSession() {
         templateNameSnapshot: input.templateName,
         isDeload: input.isDeload,
         exercises: activeExercises,
+        startedAt: input.backdatedTo ? startedAt : undefined,
       });
 
       return sessionId;
@@ -183,10 +188,18 @@ export function useCompleteSession() {
       startedAt: string;
       isDeload: boolean;
       bodyweightKg: number | null;
+      /** Minutes to add to startedAt for completed_at — for backdated sessions,
+       * where "now" isn't when the workout actually ended. Omit for live sessions. */
+      durationMin?: number;
     }) => {
       const supabase = createClient();
       const { data: userData, error } = await supabase.auth.getUser();
       if (error || !userData.user) throw new Error("Not signed in");
+
+      const completedAt =
+        input.durationMin !== undefined
+          ? new Date(new Date(input.startedAt).getTime() + input.durationMin * 60_000).toISOString()
+          : new Date().toISOString();
 
       await enqueueAndSync("workout_sessions", "upsert", {
         id: input.clientId,
@@ -195,7 +208,7 @@ export function useCompleteSession() {
         template_id: input.templateId,
         template_name_snapshot: input.templateNameSnapshot,
         started_at: input.startedAt,
-        completed_at: new Date().toISOString(),
+        completed_at: completedAt,
         is_deload: input.isDeload,
         bodyweight_kg: input.bodyweightKg,
       });

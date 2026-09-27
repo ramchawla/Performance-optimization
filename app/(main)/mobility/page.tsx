@@ -174,6 +174,7 @@ function LogForm({ onDone }: { onDone: () => void }) {
   const [tags, setTags] = useState<Set<string>>(new Set());
   const [tightness, setTightness] = useState(3);
   const [duration, setDuration] = useState("10");
+  const [logDate, setLogDate] = useState(todayLocal);
 
   function toggleTag(tag: string) {
     setTags((prev) => {
@@ -191,6 +192,7 @@ function LogForm({ onDone }: { onDone: () => void }) {
         exercisesDone: [...tags],
         hipTightness: tightness,
         durationMin: duration ? Number(duration) : null,
+        logDate,
       },
       { onSuccess: onDone }
     );
@@ -198,7 +200,17 @@ function LogForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="animate-enter space-y-3 rounded-2xl border border-surface-raised bg-surface p-3.5">
-      <p className="font-display text-xs font-bold uppercase tracking-wide text-muted">Log today&apos;s mobility</p>
+      <p className="font-display text-xs font-bold uppercase tracking-wide text-muted">Log mobility</p>
+      <label className="flex flex-col gap-1 text-xs text-muted">
+        Day
+        <input
+          type="date"
+          value={logDate}
+          max={todayLocal()}
+          onChange={(e) => setLogDate(e.target.value)}
+          className="rounded-xl border border-surface-raised bg-bg px-3 py-2 font-mono text-sm text-fg focus-visible:border-accent focus-visible:outline-none"
+        />
+      </label>
       <div className="flex flex-wrap gap-1.5">
         {EXERCISE_TAGS.map((tag) => (
           <Chip key={tag} on={tags.has(tag)} onClick={() => toggleTag(tag)}>

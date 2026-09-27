@@ -7,6 +7,7 @@ import { useExercisesByIds } from "@/lib/queries/exercises";
 import { useLogSet, useCompleteSession } from "@/lib/queries/sessions";
 import { ExerciseBlock } from "@/components/train/ExerciseBlock";
 import { RestTimer } from "@/components/train/RestTimer";
+import { formatDate, localDateOf } from "@/lib/datetime";
 
 // Session state is populated by useStartSession() (template detail page)
 // before navigating here — this page never seeds its own session.
@@ -23,12 +24,15 @@ export default function ActiveSessionPage() {
   const completeSession = useCompleteSession();
   const exerciseIds = session?.exercises.map((e) => e.exerciseId) ?? [];
   const { data: exerciseNames } = useExercisesByIds(exerciseIds);
+  const [durationMin, setDurationMin] = useState("60");
 
   useEffect(() => {
     if (!session) router.replace("/train/templates");
   }, [session, router]);
 
-  const elapsed = useElapsedLabel(session?.startedAt ?? null);
+  // Live-only: a backdated session's startedAt is noon on some past day, so a
+  // ticking "elapsed" clock or rest-timer countdown against it would be nonsense.
+  const elapsed = useElapsedLabel(!session?.isBackdated ? (session?.startedAt ?? null) : null);
 
   if (!session) {
     return null;
@@ -56,7 +60,8 @@ export default function ActiveSessionPage() {
       actualWeightKg: result.weightKg,
       actualRpe: result.rpe,
     });
-    if (restSeconds) startRestTimer(restSeconds);
+    // A rest countdown makes no sense against a backdated startedAt.
+    if (restSeconds && !session?.isBackdated) startRestTimer(restSeconds);
   }
 
   async function handleFinish() {
@@ -69,6 +74,7 @@ export default function ActiveSessionPage() {
       startedAt: session.startedAt,
       isDeload: session.isDeload,
       bodyweightKg: session.bodyweightKg,
+      durationMin: session.isBackdated ? Math.max(1, Number(durationMin) || 60) : undefined,
     });
     router.push("/train/history");
   }
@@ -80,10 +86,16 @@ export default function ActiveSessionPage() {
           <h1 className="font-display text-xl font-bold tracking-tight text-fg">
             {session.templateNameSnapshot ?? "Workout"}
           </h1>
-          <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-accent">
-            <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent motion-safe:animate-pulse" />
-            Live · {elapsed} elapsed
-          </div>
+          {session.isBackdated ? (
+            <div className="mt-1 text-xs font-semibold text-muted">
+              Logging for {formatDate(localDateOf(session.startedAt))} · no live timers
+            </div>
+          ) : (
+            <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-accent">
+              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent motion-safe:animate-pulse" />
+              Live · {elapsed} elapsed
+            </div>
+          )}
         </div>
         <button
           onClick={handleFinish}
@@ -93,7 +105,7 @@ export default function ActiveSessionPage() {
         </button>
       </div>
 
-      <div className="mt-3 flex items-center gap-4 text-sm text-fg">
+      <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-fg">
         <label className="flex items-center gap-1">
           <input
             type="checkbox"
@@ -112,6 +124,18 @@ export default function ActiveSessionPage() {
             className="w-16 rounded-lg border border-surface-raised bg-surface-raised px-2 py-1 font-mono tabular-nums text-fg focus:border-accent focus:outline-none"
           />
         </label>
+        {session.isBackdated && (
+          <label className="flex items-center gap-1">
+            Duration (min)
+            <input
+              type="number"
+              min="1"
+              value={durationMin}
+              onChange={(e) => setDurationMin(e.target.value)}
+              className="w-16 rounded-lg border border-surface-raised bg-surface-raised px-2 py-1 font-mono tabular-nums text-fg focus:border-accent focus:outline-none"
+            />
+          </label>
+        )}
       </div>
 
       <div className="stagger mt-4 space-y-4">

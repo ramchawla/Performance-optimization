@@ -28,11 +28,14 @@ export interface LogMobilityInput {
   hipTightness: number | null;
   durationMin: number | null;
   notes?: string | null;
+  /** Defaults to today — pass a past date to log a session you did earlier. */
+  logDate?: string;
 }
 
-/** Upserts today's mobility_logs row — schema's unique(user_id, log_date) means
- * logging twice in one day must edit the same row, so we reuse today's existing
- * client_id (if any) rather than always minting a new one. */
+/** Upserts a mobility_logs row for the given day (default today) — schema's
+ * unique(user_id, log_date) means logging twice for one day must edit the
+ * same row, so we reuse that day's existing client_id (if any) rather than
+ * always minting a new one. */
 export function useLogMobility() {
   const qc = useQueryClient();
   return useMutation({
@@ -41,7 +44,7 @@ export function useLogMobility() {
       const { data: userData, error } = await supabase.auth.getUser();
       if (error || !userData.user) throw new Error("Not signed in");
 
-      const logDate = todayLocal();
+      const logDate = input.logDate ?? todayLocal();
       const { data: existing } = await supabase
         .from("mobility_logs")
         .select("client_id")
