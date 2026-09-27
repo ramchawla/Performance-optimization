@@ -297,6 +297,16 @@ bringing back a server-side job.
       change on. Leaked-password protection is Pro-only and unavailable.
 - [x] "Confirm email" confirmed off — moot now that sign-up is closed.
 
+**2026-09-27 update — SEC-2 reopened deliberately, now closed differently.**
+Sign-up is back on for a friends beta (a handful of invited people, not the
+public). The exposure this section warned about is closed by
+`0017_beta_allowlist.sql` instead of by keeping sign-up off: a `BEFORE
+INSERT` trigger on `auth.users` rejects any email not on an owner-managed
+allowlist, enforced in the database regardless of what the client does.
+"Confirm email" should be turned back on now that real strangers could
+otherwise guess/front-run an invited friend's email — this still needs
+doing in the dashboard (Auth → Providers → Email), same as before.
+
 ### Phase 2 — one decision left
 - [x] Supabase plan confirmed: **free**.
 - [ ] **Decide how far to automate backups.** The manual export covers the

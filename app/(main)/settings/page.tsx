@@ -11,6 +11,13 @@ import type { WeightUnit } from "@/lib/queries/units";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth";
 import { DataExport } from "@/components/settings/DataExport";
 import {
+  useAddBetaInvite,
+  useBetaAllowlist,
+  useDeleteAccount,
+  useIsAppOwner,
+  useRemoveBetaInvite,
+} from "@/lib/queries/beta";
+import {
   useHealthExportStatus,
   useStravaConnect,
   useStravaDisconnect,
@@ -396,12 +403,16 @@ export default function Page() {
         </div>
       </section>
 
+      <BetaTestersSection />
+
       <section>
         <SectionLabel>Account</SectionLabel>
         <div className="overflow-hidden rounded-2xl border border-surface-raised bg-surface p-4">
           <ChangePasswordForm />
         </div>
       </section>
+
+      <DeleteAccountSection />
 
       <button
         type="button"
@@ -965,6 +976,188 @@ function AppleHealthRow() {
     >
       <span className="self-center text-[11px] text-muted">via Shortcut</span>
     </IntegrationShell>
+  );
+}
+
+/**
+ * Owner-only invite management for the friends beta (0017_beta_allowlist.sql).
+ * Renders nothing for anyone else — useIsAppOwner() is backed by a SECURITY
+ * DEFINER RPC a non-owner can't spoof, and RLS blocks the underlying reads/
+ * writes regardless, so this is a UI convenience on top of a real DB gate,
+ * not the gate itself.
+ */
+function BetaTestersSection() {
+  const { data: isOwner } = useIsAppOwner();
+  const { data: invites } = useBetaAllowlist();
+  const addInvite = useAddBetaInvite();
+  const removeInvite = useRemoveBetaInvite();
+  const [email, setEmail] = useState("");
+  const [note, setNote] = useState("");
+
+  if (!isOwner) return null;
+
+  function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email.trim()) return;
+    addInvite.mutate(
+      { email, note },
+      {
+        onSuccess: () => {
+          setEmail("");
+          setNote("");
+        },
+      }
+    );
+  }
+
+  return (
+    <section>
+      <SectionLabel>Beta testers</SectionLabel>
+      <div className="space-y-3 rounded-2xl border border-surface-raised bg-surface p-4">
+        <p className="text-xs text-muted">
+          Only these emails can create an account. Sign-up must also be enabled in the Supabase
+          dashboard (Authentication → Providers → Email → &quot;Allow new users to sign up&quot;) —
+          this list is the gate on top of that, not a replacement for it.
+        </p>
+        <form onSubmit={handleAdd} className="flex gap-2">
+          <input
+            type="email"
+            placeholder="friend@example.com"
+            aria-label="Email to invite"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="min-w-0 flex-1 rounded-lg border border-surface-raised bg-bg px-3 py-2 text-[15px] text-fg placeholder:text-muted focus-visible:border-accent focus-visible:outline-none"
+          />
+          <input
+            type="text"
+            placeholder="name (optional)"
+            aria-label="Note"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className="w-28 shrink-0 rounded-lg border border-surface-raised bg-bg px-3 py-2 text-[15px] text-fg placeholder:text-muted focus-visible:border-accent focus-visible:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={addInvite.isPending || !email.trim()}
+            className="min-h-11 shrink-0 rounded-lg bg-accent px-3 text-sm font-bold text-bg transition-transform duration-200 active:scale-[0.98] disabled:opacity-50"
+          >
+            Add
+          </button>
+        </form>
+        {addInvite.isError && (
+          <p className="text-xs text-red-400">
+            {addInvite.error instanceof Error ? addInvite.error.message : "Couldn't add that email."}
+          </p>
+        )}
+        {invites && invites.length > 0 ? (
+          <ul className="divide-y divide-surface-raised">
+            {invites.map((inv) => (
+              <li key={inv.email} className="flex items-center justify-between gap-2 py-2 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate text-fg">{inv.email}</p>
+                  <p className="text-[11px] text-muted">
+                    {inv.note ? `${inv.note} · ` : ""}
+                    {new Date(inv.invited_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeInvite.mutate(inv.email)}
+                  disabled={removeInvite.isPending}
+                  className="shrink-0 font-mono text-[11px] text-muted transition-colors duration-200 hover:text-red-400 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-muted">Nobody invited yet.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Permanent, self-service, no admin step. Gated by typing the exact word
+ * DELETE — a checkbox is too easy to tap by reflex on a destructive action
+ * that can't be undone (CLAUDE.md rule 7 territory even though this isn't a
+ * normal data write: preserve the ability to back out, don't fail silently).
+ */
+function DeleteAccountSection() {
+  const router = useRouter();
+  const deleteAccount = useDeleteAccount();
+  const [confirmText, setConfirmText] = useState("");
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  function handleDelete() {
+    deleteAccount.mutate(undefined, {
+      onSuccess: () => router.push("/sign-in"),
+    });
+  }
+
+  return (
+    <section>
+      <SectionLabel>Danger zone</SectionLabel>
+      <div className="space-y-3 rounded-2xl border border-red-900/40 bg-surface p-4">
+        {!showConfirm ? (
+          <>
+            <p className="text-xs text-muted">
+              Permanently deletes your account and every workout, meal, sleep, body-metric, and
+              photo you&apos;ve logged. This can&apos;t be undone.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowConfirm(true)}
+              className="min-h-11 w-full rounded-xl border border-red-900/50 py-2.5 text-sm font-semibold text-red-400 transition-colors duration-150 hover:bg-red-500/10 active:scale-[0.985]"
+            >
+              Delete my account
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted">
+              Type <span className="font-mono font-bold text-red-400">DELETE</span> to confirm. This
+              is permanent.
+            </p>
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder="DELETE"
+              aria-label="Type DELETE to confirm"
+              className="w-full rounded-lg border border-red-900/50 bg-bg px-3 py-2 text-center font-mono text-sm text-fg placeholder:text-muted/50 focus-visible:border-red-400 focus-visible:outline-none"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirm(false);
+                  setConfirmText("");
+                }}
+                className="min-h-11 flex-1 rounded-xl border border-surface-raised py-2.5 text-sm text-fg transition-colors duration-150 hover:bg-surface-raised active:scale-[0.985]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={confirmText !== "DELETE" || deleteAccount.isPending}
+                className="min-h-11 flex-1 rounded-xl bg-red-500/90 py-2.5 text-sm font-semibold text-bg transition-colors duration-150 hover:bg-red-500 active:scale-[0.985] disabled:opacity-40"
+              >
+                {deleteAccount.isPending ? "Deleting…" : "Permanently delete"}
+              </button>
+            </div>
+            {deleteAccount.isError && (
+              <p className="text-xs text-red-400">
+                {deleteAccount.error instanceof Error ? deleteAccount.error.message : "Delete failed — try again."}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 

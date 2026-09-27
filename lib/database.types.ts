@@ -44,6 +44,39 @@ export type Database = {
         }
         Relationships: []
       }
+      app_owners: {
+        Row: {
+          user_id: string
+        }
+        Insert: {
+          user_id: string
+        }
+        Update: {
+          user_id?: string
+        }
+        Relationships: []
+      }
+      beta_allowlist: {
+        Row: {
+          email: string
+          invited_at: string
+          invited_by: string | null
+          note: string | null
+        }
+        Insert: {
+          email: string
+          invited_at?: string
+          invited_by?: string | null
+          note?: string | null
+        }
+        Update: {
+          email?: string
+          invited_at?: string
+          invited_by?: string | null
+          note?: string | null
+        }
+        Relationships: []
+      }
       body_metrics: {
         Row: {
           bf_method: string | null
@@ -1240,7 +1273,8 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      is_app_owner: { Args: never; Returns: boolean }
+      is_email_beta_invited: { Args: { check_email: string }; Returns: boolean }
     }
     Enums: {
       food_source: "usda" | "off" | "custom" | "health_import"

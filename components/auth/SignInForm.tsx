@@ -13,10 +13,17 @@ const INPUT =
 /**
  * Password auth (magic link is off to avoid Supabase's email rate limit).
  *
- * Sign-up is temporarily reopened for beta traction-testing with friends
- * (no ToS/legal layer exists yet — see PRODUCTION-PLAN.md). Must also be
- * re-enabled in Supabase dashboard (Auth → Providers → Email), which this
- * code has no control over.
+ * Sign-up is invite-only for the friends beta (0017_beta_allowlist.sql —
+ * no ToS/legal layer exists yet, see PRODUCTION-PLAN.md). Must also be
+ * enabled in the Supabase dashboard (Auth → Providers → Email → "Allow new
+ * users to sign up"), which this code has no control over; the allowlist is
+ * the actual gate on top of that.
+ *
+ * is_email_beta_invited() is checked BEFORE calling signUp() so an
+ * uninvited email gets one clear sentence instead of whatever opaque
+ * "Database error saving new user" GoTrue returns when the real enforcement
+ * — a BEFORE INSERT trigger on auth.users — rejects the insert. That trigger
+ * is what actually stops a bypass of this pre-check, not this code.
  */
 export function SignInForm() {
   const router = useRouter();
@@ -50,8 +57,28 @@ export function SignInForm() {
     if (mode === "signup") {
       if (password.length < MIN_PASSWORD_LENGTH)
         return fail(`Use at least ${MIN_PASSWORD_LENGTH} characters.`);
+
+      const { data: invited, error: checkError } = await supabase.rpc("is_email_beta_invited", {
+        check_email: email,
+      });
+      // A failed pre-check (network blip, etc.) doesn't block a genuinely
+      // invited friend — fall through to the real signUp attempt, which the
+      // DB trigger enforces regardless of what this check said.
+      if (!checkError && invited === false) {
+        return fail("Performance Hub is invite-only right now — ask Ram to add your email.");
+      }
+
       const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return fail(error.message);
+      if (error) {
+        // The DB trigger's rejection surfaces here as an opaque GoTrue error
+        // (message text isn't stable enough to pattern-match) if the
+        // pre-check above somehow missed it.
+        return fail(
+          checkError || invited === false
+            ? "Performance Hub is invite-only right now — ask Ram to add your email."
+            : error.message
+        );
+      }
       if (!data.session) {
         setStatus("sent");
         setMessage("Check your email to confirm your account.");
