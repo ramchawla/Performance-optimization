@@ -45,7 +45,6 @@ export function PhotoUpload({
         ref={fileRef}
         type="file"
         accept="image/*"
-        capture="environment"
         aria-label="Choose a progress photo"
         onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         className="w-full text-xs text-muted file:mr-3 file:min-h-11 file:rounded-xl file:border-0 file:bg-surface-raised file:px-3 file:py-2 file:font-display file:text-xs file:font-bold file:text-fg"
