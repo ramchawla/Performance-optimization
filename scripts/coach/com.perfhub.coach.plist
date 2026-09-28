@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Runs the Performance Hub coach every morning at 07:30 local time.
      If the Mac is asleep at 07:30, launchd runs it at next wake.
+     Points at ~/.perfhub/coach/, not this repo path — launchd invokes
+     /bin/zsh directly, which macOS's Desktop-folder permission never covers.
      Install/uninstall: see scripts/coach/README.md. -->
 <plist version="1.0">
 <dict>
@@ -10,7 +12,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
-    <string>/Users/ramchawla/Desktop/coding/Performance-optimization/scripts/coach/run-coach.sh</string>
+    <string>/Users/ramchawla/.perfhub/coach/run-coach.sh</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict>
