@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useProfile, useUpdateProfile } from "@/lib/queries/settings";
 import { count as outboxCount } from "@/lib/sync/outbox";
@@ -135,7 +134,6 @@ function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; la
 }
 
 export default function Page() {
-  const router = useRouter();
   const { data: profile, isLoading: profileLoading } = useProfile();
   const updateProfile = useUpdateProfile();
 
@@ -223,7 +221,10 @@ export default function Page() {
   async function handleSignOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
-    router.push("/sign-in");
+    // Hard navigation, not router.push — same reasoning as DeleteAccountSection
+    // below: it drops the whole JS runtime, which is what actually guarantees
+    // no cached query data survives for whoever signs in next on this device.
+    window.location.href = "/sign-in";
   }
 
   if (profileLoading || !profile) {
@@ -988,7 +989,7 @@ function AppleHealthRow() {
  */
 function BetaTestersSection() {
   const { data: isOwner } = useIsAppOwner();
-  const { data: invites } = useBetaAllowlist();
+  const { data: invites } = useBetaAllowlist(isOwner === true);
   const addInvite = useAddBetaInvite();
   const removeInvite = useRemoveBetaInvite();
   const [email, setEmail] = useState("");
@@ -1074,6 +1075,11 @@ function BetaTestersSection() {
         ) : (
           <p className="text-xs text-muted">Nobody invited yet.</p>
         )}
+        {removeInvite.isError && (
+          <p className="text-xs text-red-400">
+            {removeInvite.error instanceof Error ? removeInvite.error.message : "Couldn't remove that invite — try again."}
+          </p>
+        )}
       </div>
     </section>
   );
@@ -1086,14 +1092,19 @@ function BetaTestersSection() {
  * normal data write: preserve the ability to back out, don't fail silently).
  */
 function DeleteAccountSection() {
-  const router = useRouter();
   const deleteAccount = useDeleteAccount();
   const [confirmText, setConfirmText] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
 
   function handleDelete() {
     deleteAccount.mutate(undefined, {
-      onSuccess: () => router.push("/sign-in"),
+      // A hard navigation, not router.push: it drops the whole JS runtime,
+      // which is what actually guarantees no cached query data from this
+      // account can render for whoever signs in next on this device
+      // (TanStack Query's cache is keyed by query name, not by user id).
+      onSuccess: () => {
+        window.location.href = "/sign-in";
+      },
     });
   }
 

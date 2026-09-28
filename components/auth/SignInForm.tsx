@@ -70,14 +70,14 @@ export function SignInForm() {
 
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) {
-        // The DB trigger's rejection surfaces here as an opaque GoTrue error
-        // (message text isn't stable enough to pattern-match) if the
-        // pre-check above somehow missed it.
-        return fail(
-          checkError || invited === false
-            ? "Performance Hub is invite-only right now — ask Ram to add your email."
-            : error.message
-        );
+        // Only show the invite-only message when the pre-check positively
+        // said "not invited" (invited === false, checkError absent) — that's
+        // the one case we actually know is the beta gate. A checkError alone
+        // means we don't know why signUp failed, so the real error.message
+        // (already registered, rate limited, ...) is what's actually useful;
+        // masking it here was a bug — it hid a friend's real problem behind
+        // a wrong "ask Ram" message.
+        return fail(invited === false && !checkError ? "Performance Hub is invite-only right now — ask Ram to add your email." : error.message);
       }
       if (!data.session) {
         setStatus("sent");

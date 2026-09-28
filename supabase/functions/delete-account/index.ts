@@ -61,12 +61,21 @@ Deno.serve(async (req: Request) => {
     // (`${userId}/${uuid}.${ext}`), so listing that one folder finds every
     // photo without needing progress_photos rows at all (which is deliberate:
     // this must still work even if a row/blob pair ever went out of sync).
-    const { data: files, error: listErr } = await supabase.storage.from("progress-photos").list(userId);
-    if (listErr) throw new Error(`storage list: ${listErr.message}`);
-    if (files && files.length > 0) {
-      const paths = files.map((f) => `${userId}/${f.name}`);
-      const { error: removeErr } = await supabase.storage.from("progress-photos").remove(paths);
+    // .list() defaults to a 100-item page — paginate until a short page, or
+    // photo #101+ for a heavy user would silently survive account deletion
+    // as permanently unreachable storage (no user_id left to clean it up by).
+    const LIST_PAGE = 100;
+    for (let offset = 0; ; offset += LIST_PAGE) {
+      const { data: files, error: listErr } = await supabase.storage
+        .from("progress-photos")
+        .list(userId, { limit: LIST_PAGE, offset });
+      if (listErr) throw new Error(`storage list: ${listErr.message}`);
+      if (!files || files.length === 0) break;
+      const { error: removeErr } = await supabase.storage
+        .from("progress-photos")
+        .remove(files.map((f) => `${userId}/${f.name}`));
       if (removeErr) throw new Error(`storage remove: ${removeErr.message}`);
+      if (files.length < LIST_PAGE) break;
     }
 
     // 2. The auth user — cascades every public.* row (all FKs verified

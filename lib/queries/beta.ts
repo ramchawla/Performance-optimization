@@ -22,8 +22,13 @@ export function useIsAppOwner() {
   });
 }
 
-/** Owner-only (RLS: "owners manage" policy on beta_allowlist, 0017). */
-export function useBetaAllowlist() {
+/**
+ * Owner-only (RLS: "owners manage" policy on beta_allowlist, 0017). Pass
+ * `enabled: false` while ownership is still loading/false — RLS would return
+ * zero rows for anyone else regardless, but there's no reason to make the
+ * round trip on every /settings visit from every non-owner.
+ */
+export function useBetaAllowlist(enabled = true) {
   return useQuery({
     queryKey: ["beta-allowlist"],
     queryFn: async (): Promise<BetaInvite[]> => {
@@ -35,6 +40,7 @@ export function useBetaAllowlist() {
       if (error) throw error;
       return data;
     },
+    enabled,
   });
 }
 
@@ -43,12 +49,18 @@ export function useAddBetaInvite() {
   return useMutation({
     mutationFn: async (input: { email: string; note?: string }) => {
       const supabase = createClient();
-      const { data: userData, error: userErr } = await supabase.auth.getUser();
-      if (userErr || !userData.user) throw new Error("Not signed in");
+      // getSession() reads the already-held local session — no network round
+      // trip — same choice as useDeleteAccount below. RLS (is_app_owner()) is
+      // what actually authorizes this write; invited_by is just attribution,
+      // not a security check, so getUser()'s extra server re-validation
+      // bought nothing here but latency on every keystroke-adjacent click.
+      const { data } = await supabase.auth.getSession();
+      const userId = data.session?.user.id;
+      if (!userId) throw new Error("Not signed in");
       // The email = lower(email) check constraint enforces this server-side too.
       const { error } = await supabase.from("beta_allowlist").insert({
         email: input.email.trim().toLowerCase(),
-        invited_by: userData.user.id,
+        invited_by: userId,
         note: input.note?.trim() || null,
       });
       if (error) throw error;
@@ -73,8 +85,15 @@ export function useRemoveBetaInvite() {
  * Permanently deletes the caller's own account: photos, then the auth user
  * (which cascades every other row — see supabase/functions/delete-account).
  * There is no undo; the confirm-by-typing-DELETE gate lives in the UI.
+ *
+ * qc.clear() + the caller doing a hard navigation (not router.push) afterward
+ * is deliberate: TanStack Query cache is keyed by query name only (e.g.
+ * ["dashboard"]), not by user id. On a shared device, a client-side route
+ * change alone would leave the deleted user's cached data sitting in memory
+ * for whoever signs in next, until each query happened to refetch.
  */
 export function useDeleteAccount() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
       const supabase = createClient();
@@ -92,6 +111,7 @@ export function useDeleteAccount() {
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error ?? `Delete failed (${res.status})`);
       await supabase.auth.signOut();
+      qc.clear();
     },
   });
 }
