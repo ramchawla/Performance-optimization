@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
+
 /**
  * Last resort: the root layout itself failed, so nothing above this rendered —
  * no fonts, no providers, no Tailwind guarantee. That's why this file ships its
@@ -12,6 +15,11 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // A no-op when SENTRY_DSN is unset (instrumentation-client.ts guards init).
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
+
   return (
     <html lang="en">
       <body

@@ -2,6 +2,7 @@
 
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { ToastProvider, notifyError } from "@/components/ui/Toast";
 
 /**
@@ -40,6 +41,13 @@ function makeQueryClient() {
      */
     mutationCache: new MutationCache({
       onError: (error, _vars, _ctx, mutation) => {
+        // A no-op when SENTRY_DSN is unset. This is the one place that sees
+        // every failed write in the app — a client-only 4xx (e.g. "not signed
+        // in") isn't worth a Sentry event, so only server/network failures
+        // are reported; the toast below still fires for everything.
+        if (!isClientError(error)) {
+          Sentry.captureException(error, { extra: { mutationKey: mutation.options.mutationKey } });
+        }
         notifyError(describe(error), {
           label: "Retry",
           onClick: () => void mutation.execute(mutation.state.variables),

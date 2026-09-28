@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
+import * as Sentry from "@sentry/nextjs";
+
 /**
  * Catches render/data errors inside the signed-in app. The layout — tab bar,
  * navigation — survives, so this is a recoverable dead end rather than a
@@ -12,6 +15,11 @@ export default function MainError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // A no-op when SENTRY_DSN is unset (instrumentation-client.ts guards init).
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
+
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-16 text-center">
       <h1 className="font-[family-name:var(--font-space-grotesk)] text-lg text-fg">
