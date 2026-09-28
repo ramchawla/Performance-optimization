@@ -214,16 +214,30 @@ async function syncDay(
     async () => {
       // The live daily summary: one call replaces getSteps + getHeartRate +
       // dailyStress. Steps here matched the stats endpoint exactly (DIAG,
-      // 2026-09-24); any lag vs the watch is the watch→cloud upload, which
-      // lastSyncTimestampGMT exposes to the UI.
+      // 2026-09-24) — but only later confirmed to be true for a day that had
+      // already ended. For the still-in-progress "today", Garmin's own
+      // aggregation for this endpoint lags real-time by hours: it comes back
+      // as an all-null placeholder (confirmed live, 2026-09-28 — every field
+      // null 10h into the day). getSteps() hits a separate, faster-updating
+      // stats endpoint, so it's used as a fallback for steps specifically
+      // whenever daily_summary hasn't caught up yet — steps is the one field
+      // people check mid-day, so it's worth the extra call only when needed.
       if (!displayName) throw new Error("daily_summary: no displayName");
       const summary = (await client.get(`${api}/usersummary-service/usersummary/daily/${displayName}`, {
         params: { calendarDate: date },
       })) as Record<string, unknown> | undefined;
       await storePayload(supabase, userId, date, "daily_summary", summary);
+      let steps = num(summary?.totalSteps);
+      if (steps === undefined) {
+        try {
+          steps = num(await client.getSteps(day));
+        } catch (err) {
+          console.error(`syncDay ${date}: steps fallback failed:`, err instanceof Error ? err.message : String(err));
+        }
+      }
       const lastSync = typeof summary?.lastSyncTimestampGMT === "string" ? Date.parse(`${summary.lastSyncTimestampGMT}Z`) : NaN;
       const fields: Array<[string, number | undefined, string, "latest" | "larger"]> = [
-        ["steps", num(summary?.totalSteps), "count", "larger"],
+        ["steps", steps, "count", "larger"],
         ["calories_total_kcal", num(summary?.totalKilocalories), "kcal", "larger"],
         ["calories_active_kcal", num(summary?.activeKilocalories), "kcal", "larger"],
         ["intensity_min_moderate", num(summary?.moderateIntensityMinutes), "min", "larger"],
